@@ -3,7 +3,8 @@ Imi propun sa-mi definesc in coq propriul limbaj de programare asemanator limbaj
 
 Toate instructiunile de mai jos sunt inspirate de la cele existente in limbajul de programare C.
 ``` Limbajul va avea urmatoarele functionalitati:
--tipuri de variabile + declarare de variabile de aceste tipuri - numere naturale, bool, string, pointeri
+-tipuri de variabile + declarare de variabile de aceste tipuri - 
+              numere naturale, bool, string, pointeri, tablouri unidimensionale
 
 -operatii pe numere naturale: (+', -', *', /', %', ^')
 
