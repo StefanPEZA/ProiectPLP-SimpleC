@@ -1,7 +1,7 @@
 # ProiectPLP-SimpleC
 Imi propun sa-mi definesc in coq propriul limbaj de programare asemanator limbajului C, denumit SimpleC.
 
-Limbajul va avea urmatoarele functionlitati si instructiuni, inspirate din limbajul C. (Vor avea aproximativ aceeasi semnatica cu cea a C-ului. Sintaxa este modificata)
+Limbajul va avea urmatoarele functionlitati si instructiuni, inspirate din limbajul C. (Sintactica si semantica putin modificate)
 ```-tipuri de variabile + declarare de variabile de aceste tipuri - numere naturale, bool, string, pointeri
 -operatii pe numere naturale: (+', -', *', /', %', ^')
 -operatii pe valori booleene: (<', <=', >', >=', !=', ==', &&', ||', !', xor'(sau exclusiv), xand'(si exclusiv))
@@ -17,9 +17,9 @@ Limbajul va avea urmatoarele functionlitati si instructiuni, inspirate din limba
 -instructiuni speciale: break (pentru a iesi fortat dintr-o bucla)
              continue (pentru a trece direct la urmatoarea iteratie dintr-o bucla)
 -functii, apeluri de functii; functia obligatorie main -- fun main() {stmt}
-             alte functii -- fun_nat nume_functie(argument) {stmt} returneaza un numar natural
-			  -- fun_bool nume_functie(argument) {stmt} returneaza o valoare booleana
-			  -- fun_string nume_functie(argument) {stmt}  returneaza un string
+             alte functii -- fun_nat nume_functie(argumente) {stmt} returneaza un numar natural
+			  -- fun_bool nume_functie(argumente) {stmt} returneaza o valoare booleana
+			  -- fun_string nume_functie(argumente) {stmt}  returneaza un string
 -variabile locale (in interiorul unei functii), variabile globale (definite inafara functiei main)
 -functii de input/output: read(variabila) citeste input-ul si-l pune intr-o variabila
 	     write_str(string) - afiseaza un mesaj, write(variabila) - afiseaza valoarea unei variabile```
