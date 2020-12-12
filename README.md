@@ -2,7 +2,7 @@
 Imi propun sa-mi definesc in coq propriul limbaj de programare asemanator limbajului C, denumit SimpleC.
 
 Limbajul va avea urmatoarele functionlitati si instructiuni, inspirate din limbajul C. (Sintactica si semantica putin modificate)
-```-tipuri de variabile + declarare de variabile de aceste tipuri - numere naturale, bool, string, pointeri
+```-tipuri de variabile + declarare de variabile de aceste tipuri - numere naturale, bool, string
 -operatii pe numere naturale: (+', -', *', /', %', ^')
 -operatii pe valori booleene: (<', <=', >', >=', !=', ==', &&', ||', !', xor'(sau exclusiv), xand'(si exclusiv))
 -operatii pe stringuri (concat(str1, str2))
