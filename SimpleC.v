@@ -52,8 +52,8 @@ Inductive Exp:=
 (*operatii pe string-uri*)
 | s_const : newString -> Exp (*constanta de tip string*)
 | s_concat : newString -> newString -> Exp (*concateneaza doua string-uri*)
-| s_toNat : newString -> Exp (*transforma un string in numar natural*)
-| s_toInt : newString -> Exp. (*transforma un string in numar intreg*)
+| s_toNat : string -> Exp (*transforma un string in numar natural*)
+| s_toInt : string -> Exp. (*transforma un string in numar intreg*)
 
 Coercion n_const : newNat >-> Exp.
 Coercion i_const : newInt >-> Exp.
@@ -115,6 +115,7 @@ with Stmt :=
 | dowhile : Stmt -> Exp -> Stmt (*instructiunea repetitiva do-while*)
 | forloop : Stmt -> Exp -> Stmt -> Stmt -> Stmt (*instructiunea repetitiva for*)
 | switch : Exp -> list Cases -> Stmt (*swtch() cu unul sau mai multe cazuri*)
+| apelfunc : string -> list string -> Stmt (*apelul unei functii*)
 (*tip nou pentru case-urile din switch*)
 with Cases :=
  caseDefault : Stmt -> Cases (*cazul implicit al switch-ului*)
@@ -155,10 +156,10 @@ Notation "'while'' ( B ) 'do'' { S } 'end''" := (whileloop B S) (at level 97).
 Notation "'do'' { S } 'while'' ( B ) 'end''" := (dowhile S B) (at level 97).
 Notation "'for'' ( I # B # A ) 'do'' { S } 'end''" := (forloop I B A S) (at level 97).
 
-Notation "'default' : { S }" := (caseDefault S) (at level 96).
-Notation "'case' ( E ):{ S }" := (caseOther E S) (at level 96).
+Notation "'default' : { S };" := (caseDefault S) (at level 96).
+Notation "'case' ( E ):{ S };" := (caseOther E S) (at level 96).
 Notation "'switch'' ( E ){ C1 } 'end''" := (switch E (cons C1 nil)) (at level 97).
-Notation "'switch'' ( E ){ C1 C2 .. Cn  } 'end''" := (switch E (cons C1 (cons C2 .. (cons Cn nil) ..))) (at level 97).
+Notation "'switch'' ( E ){ C1 C2 .. Cn  } 'end''" := (switch E (cons C1 (cons C2 .. (cons Cn nil) ..) ) ) (at level 97).
 
 Notation "'func' 'main' (()){} 'end''" := (functiaMain skip)(at level 95).
 Notation "'func' 'main' (()){ S } 'end''" := (functiaMain S)(at level 95). 
@@ -166,6 +167,12 @@ Notation "'func' 'main' (()){ S } 'end''" := (functiaMain S)(at level 95).
 Notation "'func' N (()){} 'end''" := (functie N nil skip)(at level 95).
 Notation "'func' N (()){ S } 'end''" := (functie N nil S)(at level 95).
 Notation "'func' N (( A )){} 'end''" := (functie N (cons A nil) skip)(at level 95).
+Notation "'func' N (( A1 , A2 , .. , An )){} 'end''" := (functie N (cons A1 (cons A2 .. (cons An nil) .. ) ) skip)(at level 95).
+Notation "'func' N (( A1 , A2 , .. , An )){ S } 'end''" := (functie N (cons A1 (cons A2 .. (cons An nil) .. ) ) S)(at level 95).
+
+Notation "'call' N (())" := (apelfunc N nil) (at level 89).
+Notation "'call' N (( A ))" := (apelfunc N (cons A nil)) (at level 89).
+Notation "'call' N (( A1 , A2 , .. , An ))" := (apelfunc N (cons A1 (cons A2 .. (cons An nil) .. ) ) ) (at level 89).
 
 Notation "'write(' S )" := (scrie S) (at level 92).
 Notation "'read(' V )" := (citeste V) (at level 92).
