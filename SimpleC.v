@@ -86,6 +86,8 @@ Coercion s_const : newString >-> SExp.
 Notation "'concat(' S1 , S2 ')'" := (s_concat S1 S2) (at level 50, left associativity).
 Notation "'strToNat(' S ')'" := (s_toNat S) (at level 0).
 
+(*inafara functiilor se pot declara variabile
+ doar cu valoarea default*)
 Inductive Lang :=
 | secvLang : Lang -> Lang -> Lang
 | decl_nat0 : string -> Lang
@@ -94,6 +96,8 @@ Inductive Lang :=
 | decl_string0 : string -> Lang
 | functiaMain : Stmt -> Lang
 | functie : string -> list string -> Stmt -> Lang
+(*in interiorul unei functii se pot declara 
+variabile doar cu o valoare introdusa manual*)
 with Stmt := 
 | decl_nat : string -> Exp -> Stmt
 | decl_int : string -> Exp -> Stmt
@@ -111,6 +115,8 @@ with Stmt :=
 | dowhile : Stmt -> Exp -> Stmt
 | forloop : Stmt -> Exp -> Stmt -> Stmt -> Stmt
 | switch : Exp -> list Cases -> Stmt
+| citeste : string -> Stmt
+| scrie : newString -> Stmt
 with Cases :=
 | caseDefault : Stmt -> Cases
 | caseOther : Exp -> Stmt -> Cases.
@@ -156,11 +162,18 @@ Notation "'case' ( E ):{ S }" := (caseOther E S) (at level 96).
 Notation "'switch'' ( E ){ C1 } 'end''" := (switch E (cons C1 nil)) (at level 97).
 Notation "'switch'' ( E ){ C1 C2 .. Cn  } 'end''" := (switch E (cons C1 (cons C2 .. (cons Cn nil) ..))) (at level 97).
 
-Notation "'void' 'main' (){ S } 'end''" := (functiaMain S)(at level 94). 
-Notation "'void' 'main' (){ } 'end''" := (functiaMain skip)(at level 94).
 
-Notation "'func' N (){ S } 'end''" := (functie N nil S)(at level 94).
-Notation "'func' N (){ } 'end''" := (functie N nil skip)(at level 94).
+Notation "'func' 'main' (()){} 'end''" := (functiaMain skip)(at level 95).
+Notation "'func' 'main' (()){ S } 'end''" := (functiaMain S)(at level 95). 
+
+Notation "'func' N (()){} 'end''" := (functie N nil skip)(at level 95).
+Notation "'func' N (()){ S } 'end''" := (functie N nil S)(at level 95).
+Notation "'func' N (( A )){} 'end''" := (functie N (cons A nil) skip)(at level 95).
+
+Notation "'write(' S )" := (scrie S) (at level 92).
+Notation "'read(' V )" := (citeste V) (at level 92).
+
+Check func "mama"(("a")){} end'.
 
 
 
