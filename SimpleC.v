@@ -106,7 +106,7 @@ variabile doar cu o valoare introdusa manual*)
 | decl_nat : string -> AExp -> Stmt (*declarare nat cu o valoare specificata*)
 | decl_int : string -> AExp -> Stmt (*declarare int cu o valoare specificata*)
 | decl_bool : string -> BExp -> Stmt (*declarare bool cu o valoare specificata*)
-| decl_string : string -> BExp -> Stmt (*declarare string cu o valoare specificata*)
+| decl_string : string -> SExp -> Stmt (*declarare string cu o valoare specificata*)
 | secventa : Stmt -> Stmt -> Stmt (*secventa de Stmt*)
 | skip : Stmt (*bloc gol e instructiuni*)
 | break : Stmt (*iesi din loop*)
@@ -115,7 +115,7 @@ variabile doar cu o valoare introdusa manual*)
 | asig_bool : string -> BExp -> Stmt (*asigneaza o valoare unei variabile de tip bool*)
 | asig_str : string -> SExp -> Stmt (*asigneaza o valoare unei variabile de tip string*)
 | citeste : string -> Stmt (*citeste inputul si il pune intr-o variabila*)
-| scrie : newString -> Stmt (*scrie un string*)
+| scrie : SExp -> Stmt (*scrie un string*)
 | ifthen : BExp -> Stmt -> Stmt (*if cu o singura ramura*)
 | ifthenelse : BExp -> Stmt -> Stmt -> Stmt (*if cu doua ramuri*)
 | whileloop : BExp -> Stmt -> Stmt (*instructiunea repetitiva while*)
@@ -170,24 +170,24 @@ Notation "V :S= E" := (asig_str V E) (at level 90, right associativity).
 Notation "S1 ;; S2" := (secventa S1 S2) (at level 93, right associativity).
 Notation "S1 ;' S2" := (secvLang S1 S2) (at level 93, right associativity).
 
-Notation "'if'' ( B ) 'then'' { S } 'end''" := (ifthen B S) (at level 97).
-Notation "'if'' ( B ) 'then'' { S1 } 'else'' '{' S2 '}' 'end''" := (ifthenelse B S1 S2) (at level 97).
+Notation "'if'(' B ) 'then'{' S '}end'" := (ifthen B S) (at level 97).
+Notation "'if'(' B ) 'then'{' S1 '}else'{' S2 '}end'" := (ifthenelse B S1 S2) (at level 97).
 
-Notation "'while'' ( B ) 'do'' { S }" := (whileloop B S) (at level 97).
-Notation "'do'' { S } 'while'' ( B )" := (dowhile S B) (at level 97).
-Notation "'for'' ( I ; B ; A ) 'do'' { S }" := (forloop I B A S) (at level 97).
+Notation "'while'(' B ) 'do'{' S }" := (whileloop B S) (at level 97).
+Notation "'do'{' S '}while(' B )" := (dowhile S B) (at level 97).
+Notation "'for'(' I ; B ; A ) 'do'{' S }" := (forloop I B A S) (at level 97).
 
-Notation "'default' : { S };" := (caseDefault S) (at level 96).
-Notation "'case' ( E ):{ S };" := (caseOther E S) (at level 96).
-Notation "'switch'' ( E ){ C1 .. Cn  } 'end''" := (switch E (cons C1 .. (cons Cn nil) .. )) (at level 97).
+Notation "'default:{' S };" := (caseDefault S) (at level 96).
+Notation "'case(' E ):{ S };" := (caseOther E S) (at level 96).
+Notation "'switch'(' E ){ C1 .. Cn '}end'" := (switch E (cons C1 .. (cons Cn nil) .. )) (at level 97).
 
-Notation "'void' 'main' () { }" := (functiaMain skip)(at level 95).
-Notation "'void' 'main' () { S }" := (functiaMain S)(at level 95). 
+Notation "'void' 'main()' { }" := (functiaMain skip)(at level 95).
+Notation "'void' 'main()' { S }" := (functiaMain S)(at level 95). 
 
-Notation "'void' N () { }" := (functie N nil skip)(at level 95).
-Notation "'void' N () { S }" := (functie N nil S)(at level 95).
-Notation "'void' N (( A1 , .. , An )) { }" := (functie N (cons A1 .. (cons An nil) .. ) skip)(at level 95).
-Notation "'void' N (( A1 , .. , An )) { S }" := (functie N (cons A1 .. (cons An nil) .. ) S)(at level 95).
+Notation "'void' N (){ }" := (functie N nil skip)(at level 95).
+Notation "'void' N (){ S }" := (functie N nil S)(at level 95).
+Notation "'void' N (( A1 , .. , An )){ }" := (functie N (cons A1 .. (cons An nil) .. ) skip)(at level 95).
+Notation "'void' N (( A1 , .. , An )){ S }" := (functie N (cons A1 .. (cons An nil) .. ) S)(at level 95).
 
 Notation "'call' N (( A1 , .. , An ))" := (apelfunc N (cons A1 .. (cons An nil) .. ) ) (at level 89).
 Notation "'call' N (( ))" := (apelfunc N nil) (at level 89).
@@ -195,10 +195,30 @@ Notation "'call' N (( ))" := (apelfunc N nil) (at level 89).
 Notation "'write(' S )" := (scrie S) (at level 92).
 Notation "'read(' V )" := (citeste V) (at level 92).
 
-Check void main(){
-         uint' "a" <-- 0 ;;
-         bool' "x" <-- ToBool("a")
-      }.
+(*secveta de cod (sintaxa)*)
+Check
+  void "nothing" (){ } ;'
+  uint0' "nr_nat" ;'
+  void "scrie" (("string")){
+     write( "string" )
+  } ;'
+  bool0' "bool" ;'
+  string0' "str" ;'
+  int0' "nr_intreg" ;'
+  void main(){
+     int' "n" <-- -1 ;;
+     bool' "ok" <-- ("n" !=' 0) ;;
+     if'("ok") then'{
+        "n" :N= 0
+     }end ;;
+     while'(true) do'{
+        if'("n" >' 2) then'{
+          string' "str" <-- str("numarul mai mare decat 2") ;;
+          break
+        }else'{ "n" :N= "n" +' 1 }end
+     } ;;
+     write("str")
+  }.
 
 
 
