@@ -3,54 +3,86 @@ Require Import Coq.ZArith.BinInt.
 Require Import Coq.Lists.List.
 Local Open Scope string_scope. 
 Local Open Scope list_scope.
+Local Open Scope N_scope.
 Local Open Scope Z_scope.
 Scheme Equality for string.
+
+Inductive Var :=
+|Id : string -> Var.
+Coercion Id : string >-> Var.
 
 Inductive newString : Type :=
 | errString : newString
 | stringVal : string -> newString.
 
-Inductive newNat : Type :=
-| errNat : newNat
-| natVal : nat -> newNat.
-
-Inductive newInt : Type :=
-| errInt : newInt
-| intVal : Z -> newInt.
+Inductive newNr : Type :=
+| errNr : newNr
+| natVal : N -> newNr
+| intVal : Z -> newNr.
 
 Inductive newBool : Type :=
 | errBool : newBool
 | boolVal : bool -> newBool.
 
+Inductive Pointer : Type :=
+| NULL : Pointer
+| pointtonr : nat -> Pointer
+| pointtobool : nat -> Pointer
+| pointtostring : nat -> Pointer.
+
 Notation "'str(' S )" := (stringVal S) (at level 0).
-Coercion intVal : Z >-> newInt.
-Coercion natVal : nat >-> newNat.
+Coercion intVal : Z >-> newNr.
+Coercion natVal : N >-> newNr.
 Coercion boolVal : bool >-> newBool.
 
 (*operatii pe string-uri*)
 Inductive SExp :=
-| s_const : newString -> SExp (*constanta de tip string*)
-| svar : string -> SExp (*variabila de tip string*)
-| s_concat : newString -> newString -> SExp (*concateneaza doua string-uri*)
-| toString : string -> SExp. (*transorma orice variabila intr-un string*)
+| sconst : newString -> SExp (*constanta de tip string*)
+| svar : Var -> SExp (*variabila de tip string*)
+| ref_str : Var -> SExp (*referinta catre un string*)
+| sconcat : newString -> newString -> SExp (*concateneaza doua string-uri*)
+| toString : Var -> SExp. (*transorma orice variabila intr-un string*)
+
+(*funtia de concatenare a doua string-uri*)
+Definition fun_strConcat (s1 s2: newString) : newString :=
+match s1 , s2 with 
+  |errString, _ => errString
+  |_, errString => errString
+  |stringVal str1, stringVal str2 => stringVal (str1 ++ str2)
+end.
+
+Fixpoint Length_help (s : string) : N :=
+  match s with
+  | EmptyString => N0
+  | String c s' => Z.to_N(1 + Z.of_N(Length_help s'))
+  end.
+
+Definition fun_strLength (s : newString) : newNr :=
+match s with 
+| errString => errNr
+| stringVal str1 => natVal (Length_help str1)
+end.
+
 
 Inductive AExp:=
-| i_const : newInt -> AExp (*constanta de tip int*)
-| n_const : newNat -> AExp (*constanta de tip nat*)
-| avar : string -> AExp (*variabila de tip nat/int*)
+| aconst : newNr -> AExp (*constanta de tip int*)
+| avar : Var -> AExp (*variabila de tip nat/int*)
+| ref_nat : Var -> AExp (*referinta la catre un nat*)
+| ref_int : Var -> AExp (*referinta la catre un int*)
 | adunare : AExp -> AExp -> AExp
 | scadere : AExp -> AExp -> AExp
 | inmultire : AExp -> AExp -> AExp
 | impartire : AExp -> AExp -> AExp
 | modulo : AExp -> AExp -> AExp
 | putere : AExp -> AExp -> AExp
-| toNat : string -> AExp (*transforma orice intr-un numar natural*)
-| toInt : string -> AExp (*transforma orice intr-un intreg*)
-| strLen : SExp -> AExp.
+| toNat : Var -> AExp (*transforma orice intr-un numar natural*)
+| toInt : Var -> AExp (*transforma orice intr-un intreg*)
+| strLen : SExp -> AExp. (* returneaza lungimea unui string*)
 
 Inductive BExp :=
-| b_const : newBool -> BExp (*constanta de tip bool*)
-| bvar : string -> BExp (*variabila de tipul bool*)
+| bconst : newBool -> BExp (*constanta de tip bool*)
+| bvar : Var -> BExp (*variabila de tipul bool*)
+| ref_bool : Var -> BExp (*referinta catre un bool*)
 | negatie : BExp -> BExp
 | si_logic : BExp -> BExp -> BExp
 | sau_logic : BExp -> BExp -> BExp
@@ -64,20 +96,20 @@ Inductive BExp :=
 | si_exclusiv: BExp -> BExp -> BExp
 | toBool : string -> BExp. (*transforma un numar in boolean*)
 
-Coercion i_const : newInt >-> AExp.
-Coercion n_const : newNat >-> AExp.
-Coercion b_const : newBool >-> BExp.
-Coercion s_const : newString >-> SExp.
-Coercion avar : string >-> AExp.
-Coercion bvar : string >-> BExp.
-Coercion svar : string >-> SExp.
+Coercion aconst : newNr >-> AExp.
+Coercion bconst : newBool >-> BExp.
+Coercion sconst : newString >-> SExp.
+Coercion avar : Var >-> AExp.
+Coercion bvar : Var >-> BExp.
+Coercion svar : Var >-> SExp.
 
-Notation "'Concat(' S1 , S2 )" := (concat S1 S2) (at level 50, left associativity).
+Notation "'Concat(' S1 , S2 )" := (sconcat S1 S2) (at level 50, left associativity).
 Notation "'ToNat(' S )" := (toNat S) (at level 0).
 Notation "'ToInt(' S )" := (toInt S) (at level 0).
 Notation "'ToBool(' S )" := (toBool S) (at level 0).
 Notation "'ToString(' S )" := (toString S) (at level 0).
 Notation "'StrLen(' S )" := (strLen S) (at level 0).
+Notation "'s*' V" := (ref_str V) (at level 0).
 
 (*Notatii expresii algebrice*)
 Notation "A +' B" := (adunare A B)(at level 50, left associativity).
@@ -86,7 +118,9 @@ Notation "A *' B" := (inmultire A B)(at level 48, left associativity).
 Notation "A /' B" := (impartire A B)(at level 48, left associativity).
 Notation "A %' B" := (modulo A B)(at level 48, left associativity).
 Notation "A ^' B" := (putere A B) (at level 48, left associativity).
-
+Notation "'u*' V" := (ref_nat V) (at level 0).
+Notation "'i*' V" := (ref_nat V) (at level 0).
+ 
 (*Notatii expresii booleene*)
 Notation "!' A" := (negatie A) (at level 45, right associativity).
 Notation "A &&' B" := (si_logic A B) (at level 55, left associativity).
@@ -99,22 +133,31 @@ Notation "A >=' B" := (mai_micEq A B) (at level 52, left associativity).
 Notation "A >' B" := (mai_mic A B) (at level 52, left associativity).
 Notation "A ==' B" := (egalitate A B) (at level 53, left associativity).
 Notation "A !=' B" := (egalitate A B) (at level 53, left associativity).
+Notation "'b*' V" := (ref_bool V) (at level 0).
 
 Inductive Stmt := 
 (*in interiorul unei functii se pot declara 
 variabile doar cu o valoare introdusa manual*)
-| decl_nat : string -> AExp -> Stmt (*declarare nat cu o valoare specificata*)
-| decl_int : string -> AExp -> Stmt (*declarare int cu o valoare specificata*)
-| decl_bool : string -> BExp -> Stmt (*declarare bool cu o valoare specificata*)
-| decl_string : string -> SExp -> Stmt (*declarare string cu o valoare specificata*)
+| point_nat : Var -> Var -> Stmt
+| point_int : Var -> Var -> Stmt
+| point_bool : Var -> Var -> Stmt
+| point_str : Var -> Var -> Stmt
+| refasig_nat : Var -> AExp -> Stmt
+| refasig_int : Var -> AExp -> Stmt
+| refasig_bool : Var -> BExp -> Stmt
+| refasig_str : Var -> SExp -> Stmt
+| decl_nat : Var -> AExp -> Stmt (*declarare nat cu o valoare specificata*)
+| decl_int : Var -> AExp -> Stmt (*declarare int cu o valoare specificata*)
+| decl_bool : Var -> BExp -> Stmt (*declarare bool cu o valoare specificata*)
+| decl_string : Var -> SExp -> Stmt (*declarare string cu o valoare specificata*)
 | secventa : Stmt -> Stmt -> Stmt (*secventa de Stmt*)
 | skip : Stmt (*bloc gol e instructiuni*)
 | break : Stmt (*iesi din loop*)
 | continue : Stmt (*treci direct la urmatoarea iteratie*)
-| asig_nr : string -> AExp -> Stmt (*asigneaza o valoare unei variabile de tip numar*)
-| asig_bool : string -> BExp -> Stmt (*asigneaza o valoare unei variabile de tip bool*)
-| asig_str : string -> SExp -> Stmt (*asigneaza o valoare unei variabile de tip string*)
-| citeste : string -> Stmt (*citeste inputul si il pune intr-o variabila*)
+| asig_nr : Var -> AExp -> Stmt (*asigneaza o valoare unei variabile de tip numar*)
+| asig_bool : Var -> BExp -> Stmt (*asigneaza o valoare unei variabile de tip bool*)
+| asig_str : Var -> SExp -> Stmt (*asigneaza o valoare unei variabile de tip string*)
+| citeste : Var -> Stmt (*citeste inputul si il pune intr-o variabila*)
 | scrie : SExp -> Stmt (*scrie un string*)
 | ifthen : BExp -> Stmt -> Stmt (*if cu o singura ramura*)
 | ifthenelse : BExp -> Stmt -> Stmt -> Stmt (*if cu doua ramuri*)
@@ -122,34 +165,44 @@ variabile doar cu o valoare introdusa manual*)
 | dowhile : Stmt -> BExp -> Stmt (*instructiunea repetitiva do-while*)
 | forloop : Stmt -> BExp -> Stmt -> Stmt -> Stmt (*instructiunea repetitiva for*)
 | switch : AExp -> list Cases -> Stmt (*swtch() cu unul sau mai multe cazuri*)
-| apelfunc : string -> list string -> Stmt (*apelul unei functii*)
+| apelfunc : Var -> list Var -> Stmt (*apelul unei functii*)
 (*tip nou pentru case-urile din switch*)
 with Cases :=
  caseDefault : Stmt -> Cases (*cazul implicit al switch-ului*)
 | caseOther : AExp -> Stmt -> Cases. (*alte cazuri*)
 
-Inductive newType : Type :=
-| err_undeclared : newType (*eroare variabile nedeclarata*)
-| err_assignment : newType (*eroare asignare variabila nedeclarata*)
-| default : newType (*variabila contine valoarea default*)
-| natType : newNat -> newType (*variabila este de tip nat*)
-| intType : newInt -> newType (*variabila este de tip int*)
-| boolType : newBool -> newType (*variabila este de tip bool*)
-| stringType : newString -> newType (*variabila este de tip string*)
-| code : Stmt -> newType. (*codul unei funcii*)
-
-Coercion code : Stmt >-> newType.
-
 (*inafara functiilor se pot declara variabile
  doar cu valoarea default*)
 Inductive Lang :=
 | secvLang : Lang -> Lang -> Lang (*secventa de Lang*)
-| decl_nat0 : string -> Lang (*declarare nat cu valoare default*)
-| decl_int0 : string -> Lang  (*declarare int cu valoare default*)
-| decl_bool0 : string -> Lang (*declarare bool cu valoare default*)
-| decl_string0 : string -> Lang(*declarare string cu valoare default*)
+| decl_nat0 : Var -> Lang (*declarare nat cu valoare default*)
+| decl_int0 : Var -> Lang  (*declarare int cu valoare default*)
+| decl_bool0 : Var -> Lang (*declarare bool cu valoare default*)
+| decl_string0 : Var -> Lang(*declarare string cu valoare default*)
 | functiaMain : Stmt -> Lang  (*functia principala main*)
-| functie : string -> list string -> Stmt -> Lang. (*declarare de functii*)
+| functie : Var -> list Var -> Stmt -> Lang. (*declarare de functii*)
+
+Inductive newType : Type :=
+| err_undeclared : newType (*eroare variabile nedeclarata*)
+| err_assignment : newType (*eroare asignare variabila nedeclarata*)
+| default : newType (*variabila contine valoarea default*)
+| nrType : newNr -> newType (*variabila este de tip numar*)
+| boolType : newBool -> newType (*variabila este de tip bool*)
+| stringType : newString -> newType (*variabila este de tip string*)
+| pointerType : Pointer -> newType (*variabila este de tip pointer*)
+| code : Stmt -> newType. (*codul unei funcii*)
+
+Coercion code : Stmt >-> newType.
+
+Notation "'uint**' V <-- P" := (point_nat V P) (at level 90).
+Notation "'int**' V <-- P" := (point_int V P) (at level 90).
+Notation "'bool**' V <-- P" := (point_bool V P) (at level 90).
+Notation "'string**' V <-- P" := (point_str V P) (at level 90).
+
+Notation "'u*' V ::= E" := (refasig_nat V E) (at level 90).
+Notation "'i*' V ::= E" := (refasig_int V E) (at level 90).
+Notation "'b*' V ::= E" := (refasig_bool V E) (at level 90).
+Notation "'s*' V ::= E":= (refasig_str V E) (at level 90).
 
 Notation "'uint0'' V" := (decl_nat0 V) (at level 90, right associativity).
 Notation "'uint'' V <-- E" := (decl_nat V E) (at level 90, right associativity).
@@ -186,14 +239,28 @@ Notation "'void' 'main()' { S }" := (functiaMain S)(at level 95).
 
 Notation "'void' N (){ }" := (functie N nil skip)(at level 95).
 Notation "'void' N (){ S }" := (functie N nil S)(at level 95).
-Notation "'void' N (( A1 , .. , An )){ }" := (functie N (cons A1 .. (cons An nil) .. ) skip)(at level 95).
-Notation "'void' N (( A1 , .. , An )){ S }" := (functie N (cons A1 .. (cons An nil) .. ) S)(at level 95).
+Notation "'void' N (( A1 , .. , An )){ }" := (functie N (cons (Id A1) .. (cons (Id An) nil) .. ) skip)(at level 95).
+Notation "'void' N (( A1 , .. , An )){ S }" := (functie N (cons (Id A1) .. (cons (Id An) nil) .. ) S)(at level 95).
 
-Notation "'call' N (( A1 , .. , An ))" := (apelfunc N (cons A1 .. (cons An nil) .. ) ) (at level 89).
+Notation "'call' N (( A1 , .. , An ))" := (apelfunc N (cons (Id A1) .. (cons (Id An) nil) .. ) ) (at level 89).
 Notation "'call' N (( ))" := (apelfunc N nil) (at level 89).
 
 Notation "'write(' S )" := (scrie S) (at level 92).
 Notation "'read(' V )" := (citeste V) (at level 92).
+
+
+Check (uint** "to_nat" <-- "nr1" ;;
+       int** "to_int" <-- "nr2" ;;
+       bool** "to_bool" <-- "ok" ;;
+       string** "to_str" <-- "msg" ;;
+       u* "to_nat" ::= 10 ;;
+       i* "to_int" ::= -5 ;;
+       b* "to_bool" ::= true ;;
+       s* "to_str" ::= str("mesaj !") ;;
+       
+       bool' "new" <-- false ;;
+       "new" :B= true &&' b* "to_bool"
+      ).
 
 (*secveta de cod (sintaxa)*)
 Check
@@ -217,7 +284,7 @@ Check
           break
         }else'{ "n" :N= "n" +' 1 }end
      } ;;
-     write("str")
+     call "scrie"(("str"))
   }.
 
 
