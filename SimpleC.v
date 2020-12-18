@@ -248,7 +248,7 @@ Notation "'call' N (( ))" := (apelfunc N nil) (at level 89).
 Notation "'write(' S )" := (scrie S) (at level 92).
 Notation "'read(' V )" := (citeste V) (at level 92).
 
-
+(*secventa de cod cu pointeri*)
 Check (uint** "to_nat" <-- "nr1" ;;
        int** "to_int" <-- "nr2" ;;
        bool** "to_bool" <-- "ok" ;;
@@ -275,7 +275,7 @@ Check
   void main(){
      int' "n" <-- -1 ;;
      bool' "ok" <-- ("n" !=' 0) ;;
-     if'("ok") then'{
+     if'("ok" &&' "n" <=' 0) then'{
         "n" :N= 0
      }end ;;
      while'(true) do'{
@@ -284,7 +284,8 @@ Check
           break
         }else'{ "n" :N= "n" +' 1 }end
      } ;;
-     call "scrie"(("str"))
+     call "scrie"(("str")) ;;
+     switch'("a"){ default:{ skip }; }end
   }.
 
 
