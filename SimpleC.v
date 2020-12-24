@@ -5,20 +5,19 @@ Local Open Scope string_scope.
 Local Open Scope list_scope.
 Local Open Scope N_scope.
 Local Open Scope Z_scope.
-Scheme Equality for string.
 
 Inductive Var :=
 |Id : string -> Var.
 Coercion Id : string >-> Var.
+Scheme Equality for Var.
 
 Inductive newString : Type :=
 | errString : newString
-| stringVal : string -> newString.
+| strVal : string -> newString.
 
 Inductive newNr : Type :=
 | errNr : newNr
-| natVal : N -> newNr
-| intVal : Z -> newNr.
+| nrVal : Z -> newNr.
 
 Inductive newBool : Type :=
 | errBool : newBool
@@ -30,9 +29,8 @@ Inductive Pointer : Type :=
 | pointtobool : nat -> Pointer
 | pointtostring : nat -> Pointer.
 
-Notation "'str(' S )" := (stringVal S) (at level 0).
-Coercion intVal : Z >-> newNr.
-Coercion natVal : N >-> newNr.
+Notation "'str(' S )" := (strVal S) (at level 0).
+Coercion nrVal : Z >-> newNr.
 Coercion boolVal : bool >-> newBool.
 
 (*operatii pe string-uri*)
@@ -40,7 +38,7 @@ Inductive SExp :=
 | sconst : newString -> SExp (*constanta de tip string*)
 | svar : Var -> SExp (*variabila de tip string*)
 | ref_str : Var -> SExp (*referinta catre un string*)
-| sconcat : newString -> newString -> SExp (*concateneaza doua string-uri*)
+| sconcat : SExp -> SExp -> SExp (*concateneaza doua string-uri*)
 | toString : Var -> SExp. (*transorma orice variabila intr-un string*)
 
 (*funtia de concatenare a doua string-uri*)
@@ -48,19 +46,19 @@ Definition fun_strConcat (s1 s2: newString) : newString :=
 match s1 , s2 with 
   |errString, _ => errString
   |_, errString => errString
-  |stringVal str1, stringVal str2 => stringVal (str1 ++ str2)
+  |strVal str1, strVal str2 => strVal (str1 ++ str2)
 end.
 
-Fixpoint Length_help (s : string) : N :=
+Fixpoint Length_help (s : string) : Z :=
   match s with
-  | EmptyString => N0
-  | String c s' => Z.to_N(1 + Z.of_N(Length_help s'))
+  | EmptyString => Z0
+  | String c s' => 1 + Length_help s'
   end.
 
-Definition fun_strLength (s : newString) : newNr :=
+Definition fun_strlen (s : newString) : newNr :=
 match s with 
 | errString => errNr
-| stringVal str1 => natVal (Length_help str1)
+| strVal str1 => nrVal (Length_help str1)
 end.
 
 
@@ -75,8 +73,7 @@ Inductive AExp:=
 | impartire : AExp -> AExp -> AExp
 | modulo : AExp -> AExp -> AExp
 | putere : AExp -> AExp -> AExp
-| toNat : Var -> AExp (*transforma orice intr-un numar natural*)
-| toInt : Var -> AExp (*transforma orice intr-un intreg*)
+| toNr : Var -> AExp (*transforma orice intr-un numar*)
 | strLen : SExp -> AExp. (* returneaza lungimea unui string*)
 
 Inductive BExp :=
@@ -104,8 +101,7 @@ Coercion bvar : Var >-> BExp.
 Coercion svar : Var >-> SExp.
 
 Notation "'Concat(' S1 , S2 )" := (sconcat S1 S2) (at level 50, left associativity).
-Notation "'ToNat(' S )" := (toNat S) (at level 0).
-Notation "'ToInt(' S )" := (toInt S) (at level 0).
+Notation "'ToNr(' S )" := (toNr S) (at level 0).
 Notation "'ToBool(' S )" := (toBool S) (at level 0).
 Notation "'ToString(' S )" := (toString S) (at level 0).
 Notation "'StrLen(' S )" := (strLen S) (at level 0).
@@ -183,12 +179,11 @@ Inductive Lang :=
 | functie : Var -> list Var -> Stmt -> Lang. (*declarare de functii*)
 
 Inductive newType : Type :=
-| err_undeclared : newType (*eroare variabile nedeclarata*)
-| err_assignment : newType (*eroare asignare variabila nedeclarata*)
+| error : newType (*tip de eroare*)
 | default : newType (*variabila contine valoarea default*)
 | nrType : newNr -> newType (*variabila este de tip numar*)
 | boolType : newBool -> newType (*variabila este de tip bool*)
-| stringType : newString -> newType (*variabila este de tip string*)
+| strType : newString -> newType (*variabila este de tip string*)
 | pointerType : Pointer -> newType (*variabila este de tip pointer*)
 | code : Stmt -> newType. (*codul unei funcii*)
 
@@ -288,6 +283,286 @@ Check
      switch'("a"){ default:{ skip }; }end
   }.
 
+
+Definition Memory := nat -> newType.
+Definition State := Var -> nat.
+Inductive MemoryLayer := 
+| pair : State -> Memory -> nat -> MemoryLayer.
+Notation "<< S , M , N >>" := (pair S M N) (at level 0).
+
+Definition getVal (m : MemoryLayer) (v : Var) : newType :=
+match m with
+| pair st mem _ => mem (st v)
+end.
+
+Definition getMaxPos (m : MemoryLayer) : nat :=
+match m with
+| pair _ _ max => max
+end.
+
+Definition updateState (st : State) (v : Var) (n : nat) : State:= 
+fun x => if (Var_beq x v) then n else st x.
+
+Definition updateMemory (mem : Memory) (n : nat) (val : newType) : Memory :=
+fun n' => if (Nat.eqb n' n) then val else mem n'. 
+
+Definition update (M : MemoryLayer) (V : Var) (T : newType) (pos : nat) : MemoryLayer :=
+match M with
+|<<st, mem, max>> => <<updateState st V pos, updateMemory mem pos T, (Nat.add max 1) >>
+end.
+ 
+Definition mem0 : Memory := fun n => error.
+Definition state0 : State := fun x => 0%nat.
+Definition stack0 := <<state0, mem0, 1>>.
+
+Definition newPlus (a b : newType) :=
+match a, b with
+| nrType a', nrType b' => match a', b' with
+                        | nrVal n1, nrVal n2 => nrType (n1 + n2)
+                        | _, _ => nrType errNr
+                        end
+| _ , _ => error
+end.
+
+Definition newMinus (a b : newType) :=
+match a, b with
+| nrType a', nrType b' => match a', b' with
+                        | nrVal n1, nrVal n2 => nrType (n1 - n2)
+                        | _, _ => nrType errNr
+                        end
+| _ , _ => error
+end.
+
+Definition newTimes (a b : newType) :=
+match a, b with
+| nrType a', nrType b' => match a', b' with
+                        | nrVal n1, nrVal n2 => nrType (n1 * n2)
+                        | _, _ => nrType errNr
+                        end
+| _ , _ => error
+end.
+
+Definition newDivide (a b : newType) :=
+match a, b with
+| nrType a', nrType b' => match a', b' with
+                        | nrVal n1, nrVal n2 => if (Z.eqb n2 0) then nrType errNr else nrType (n1 / n2)
+                        | _, _ => nrType errNr
+                        end
+| _ , _ => error
+end.
+
+Definition newModulo (a b : newType) :=
+match a, b with
+| nrType a', nrType b' => match a', b' with
+                        | nrVal n1, nrVal n2 => if (Z.eqb n2 0) then nrType errNr else nrType (Z.modulo n1 n2)
+                        | _, _ => nrType errNr
+                        end
+| _ , _ => error
+end.
+
+Definition newPower (a b : newType) :=
+match a, b with
+| nrType a', nrType b' => match a', b' with
+                        | nrVal n1, nrVal n2 => if (Z.ltb n2 0) then nrType errNr else nrType (Z.pow n1 n2)
+                        | _, _ => nrType errNr
+                        end
+| _ , _ => error
+end.
+
+Definition newStrlen (a : newType) :=
+match a with
+| strType a' => nrType ( fun_strlen a' )
+| _ => error
+end.
+
+Definition newStrcat (s1 s2 : newType) := 
+match s1, s2 with
+| strType s1', strType s2' => strType ( fun_strConcat s1' s2' )
+| _, _ => error
+end.
+
+Definition newToNr (a : newType) := 
+match a with
+|boolType a' => match a' with
+                | errBool => nrType errNr
+                | boolVal b => if (b) then (nrType 1) else (nrType 0)
+                end
+|_ => error
+end.
+
+Reserved Notation "STR '=S[' St ']S>' N" (at level 60).
+Inductive seval : SExp -> MemoryLayer -> newType -> Prop :=
+| s_const : forall s sigma, sconst s =S[ sigma ]S> strType s
+| s_var : forall s sigma, svar s =S[ sigma ]S> getVal sigma s
+| s_concat : forall s1 s2 sigma s st1 st2,
+    s1 =S[ sigma ]S> st1 ->
+    s2 =S[ sigma ]S> st2 ->
+    s = newStrcat st1 st2 ->
+    Concat( s1 , s2 ) =S[ sigma ]S> s
+where "STR '=S[' St ']S>' N" := (seval STR St N).
+
+Reserved Notation "A '=A[' S ']A>' N" (at level 60).
+Inductive aeval : AExp -> MemoryLayer -> newType -> Prop :=
+| e_const : forall n sigma, aconst n =A[ sigma ]A> nrType n
+| e_var : forall v sigma, avar v =A[ sigma ]A> getVal sigma v
+| e_add : forall a1 a2 i1 i2 sigma n,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    n = newPlus i1 i2 ->
+    a1 +' a2 =A[ sigma ]A> n
+| e_sub : forall a1 a2 i1 i2 sigma n,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    n = newMinus i1 i2 ->
+    a1 -' a2 =A[ sigma ]A> n
+| e_times : forall a1 a2 i1 i2 sigma n,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    n = newTimes i1 i2 ->
+    a1 *' a2 =A[ sigma ]A> n
+| e_divided : forall a1 a2 i1 i2 sigma n,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    n = newDivide i1 i2 ->
+    a1 /' a2 =A[ sigma ]A> n
+| e_div_rest : forall a1 a2 i1 i2 sigma n,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    n = newModulo i1 i2 ->
+    a1 %' a2 =A[ sigma ]A> n
+| e_power : forall a1 a2 i1 i2 sigma n,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    n = newPower i1 i2 ->
+    a1 ^' a2 =A[ sigma ]A> n
+| e_strlen : forall a1 sigma s1 n,
+    a1 =S[ sigma ]S> s1 ->
+    n = newStrlen s1 ->
+    StrLen( a1 ) =A[ sigma ]A> n
+where "A '=A[' S ']A>' N" := (aeval A S N).
+
+Definition notb (a : bool) : bool :=
+match a with
+| true => false
+| false => true
+end.
+
+Definition newComp (type : string) (a b : newType) : newType := 
+match a, b with
+| nrType a', nrType b' 
+          => match a', b' with
+          | nrVal a'', nrVal b'' 
+                        => match type with
+                           | "lt" => boolType (Z.ltb a'' b'')
+                           | "le" => boolType (Z.leb a'' b'')
+                           | "gt" => boolType (Z.ltb b'' a'')
+                           | "ge" => boolType (Z.leb b'' a'')
+                           | "eq" => boolType (Z.eqb a'' b'')
+                           | _ => boolType (notb (Z.eqb a'' b'') )
+                           end
+          | _, _ => boolType errBool
+          end
+| _, _ => error
+end.
+
+Definition newOrB (a b : newType) : newType := 
+match a, b with
+| boolType a', boolType b' => match a', b' with
+                              | boolVal a'', boolVal b'' => boolType (orb a'' b'')
+                              | _, _ => boolType errBool
+                              end
+| _, _ => error
+end.
+
+Definition xorb (a b : bool) : bool :=
+match a, b with 
+| true, true => false
+| false, false => false
+| _, _ => true
+end.
+
+Definition newXor (a b : newType) : newType := 
+match a, b with
+| boolType a', boolType b' => match a', b' with
+                              | boolVal a'', boolVal b'' => boolType (xorb a'' b'')
+                              | _, _ => boolType errBool
+                              end
+| _, _ => error
+end.
+
+Definition newXand (a b : newType) : newType := 
+match a, b with
+| boolType a', boolType b' => match a', b' with
+                              | boolVal a'', boolVal b'' => boolType ( notb (xorb a'' b'') )
+                              | _, _ => boolType errBool
+                              end
+| _, _ => error
+end.
+
+Reserved Notation "B '=B[' S ']B>' B'" (at level 70).
+Inductive beval : BExp -> MemoryLayer -> newType -> Prop :=
+| e_true : forall sigma, true =B[ sigma ]B> boolType true
+| e_false : forall sigma, false =B[ sigma ]B> boolType false
+| e_bvar : forall v sigma, bvar v =B[ sigma ]B> getVal sigma v
+| e_lessthan : forall a1 a2 i1 i2 sigma b,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    b = newComp "lt" i1 i2 ->
+    a1 <' a2 =B[ sigma ]B> b
+| e_lessthan_eq : forall a1 a2 i1 i2 sigma b,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    b = newComp "le" i1 i2 ->
+    a1 <=' a2 =B[ sigma ]B> b
+| e_greaterthan : forall a1 a2 i1 i2 sigma b,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    b = newComp "gt" i1 i2 ->
+    a1 >' a2 =B[ sigma ]B> b
+| e_greaterthan_eq : forall a1 a2 i1 i2 sigma b,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    b = newComp "ge" i1 i2 ->
+    a1 >=' a2 =B[ sigma ]B> b
+| e_nottrue : forall b sigma,
+    b =B[ sigma ]B> boolType true ->
+    (!' b) =B[ sigma ]B> boolType false
+| e_notfalse : forall b sigma,
+    b =B[ sigma ]B> boolType false ->
+    (!' b) =B[ sigma ]B> boolType true
+| e_andtrue : forall b1 b2 sigma t,
+    b1 =B[ sigma ]B> boolType true ->
+    b2 =B[ sigma ]B> t ->
+    b1 &&' b2 =B[ sigma ]B> t
+| e_andfalse : forall b1 b2 sigma,
+    b1 =B[ sigma ]B>boolType false ->
+    b1 &&' b2 =B[ sigma ]B> boolType false
+| e_or : forall b1 b2 sigma t t1 t2,
+    b1 =B[ sigma ]B> t1 ->
+    b2 =B[ sigma ]B> t2 ->
+    t = newOrB t1 t2 ->
+    b1 ||' b2 =B[ sigma ]B> t
+| e_equality : forall a1 a2 i1 i2 sigma b,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    b = newComp "eq" i1 i2 ->
+    a1 ==' a2 =B[ sigma ]B> b
+| e_inequality : forall a1 a2 i1 i2 sigma b,
+    a1 =A[ sigma ]A> i1 ->
+    a2 =A[ sigma ]A> i2 ->
+    b = newComp "ineq" i1 i2 ->
+    a1 !=' a2 =B[ sigma ]B> b
+| e_xor : forall b1 b2 sigma t t1 t2,
+    b1 =B[ sigma ]B> t1 ->
+    b2 =B[ sigma ]B> t2 ->
+    t = newXor t1 t2 ->
+    b1 ||' b2 =B[ sigma ]B> t
+| e_xand : forall b1 b2 sigma t t1 t2,
+    b1 =B[ sigma ]B> t1 ->
+    b2 =B[ sigma ]B> t2 ->
+    t = newXand t1 t2 ->
+    b1 ||' b2 =B[ sigma ]B> t
+where "B '=B[' S ']B>' B'" := (beval B S B').
 
 
 
