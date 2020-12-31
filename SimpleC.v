@@ -1,6 +1,8 @@
-Require Import Strings.String.
+Require Import Ascii String.
 Require Import Coq.ZArith.BinInt.
+Require Import Coq.Numbers.BinNums.
 Require Import Coq.Lists.List.
+Require Import Extraction.
 Local Open Scope string_scope. 
 Local Open Scope list_scope.
 Local Open Scope N_scope.
@@ -55,6 +57,89 @@ match s with
 | strVal str1 => nrVal (Length_help str1)
 end.
 
+Definition Z_of_bool (b : bool) := if b then 1 else 0.
+Definition Z_of_ascii (a : ascii) : Z:=
+  match a with
+   Ascii b1 b2 b3 b4 b5 b6 b7 b8 =>
+     Z_of_bool b1 + 2 * (Z_of_bool b2 + 2 * (Z_of_bool b3 + 2 * (Z_of_bool b4 + 2 *
+      (Z_of_bool b5 + 2 * (Z_of_bool b6 + 2 * (Z_of_bool b7 + 2 * Z_of_bool b8))))))
+  end.
+Definition Z_of_0 := Eval compute in Z_of_ascii "0".
+Definition Z_of_digit a := 
+   let v := Z_of_ascii a - Z_of_0 in
+   match v ?= 0 with
+     Lt => None | Eq => Some v | 
+     Gt => match v ?= 10 with Lt => Some v | _ => None end
+   end.
+Fixpoint str_to_num (s : string) : option (Z * Z) :=
+  match s with
+    EmptyString => None
+  | String a s' => 
+    match Z_of_digit a with
+      None => None
+    | Some va =>
+      match str_to_num s' with
+        None => Some (va, 1)
+      | Some (vs, n) => Some (va * 10 ^ n + vs, n+1)
+      end
+    end
+  end.
+Definition num_to_newNr (n : option(Z*Z)) : newNr :=
+match n with
+| None => errNr
+| Some (nr, _) => nrVal nr
+end.
+Definition str_toNewNr (s : string) : newNr :=
+match s with
+| EmptyString => errNr
+| String a s' => if (ascii_dec a "-") 
+        then (match (num_to_newNr (str_to_num s')) with
+              | errNr => errNr
+              | nrVal nr => nrVal (0 - nr) end
+        ) 
+        else (match (num_to_newNr (str_to_num s)) with
+              | errNr => errNr
+              | nrVal nr => nrVal nr end
+        )
+end.
+
+Print ascii.
+
+Definition digit_to_ascii (n : Z) : ascii :=
+match n with
+|Z0 => "0"
+|1 => "1"
+|2 => "2"
+|3 => "3"
+|4 => "4"
+|5 => "5"
+|6 => "6"
+|7 => "7"
+|8 => "8"
+|9 => "9"
+|_ => ascii_of_nat 1
+end.
+
+Fixpoint nr_to_string_aux (time : nat) (n : Z) (acc : string) : string :=
+  let acc' := String (digit_to_ascii (n mod 10)) acc in
+  match time with
+    | 0%nat => acc'
+    | S time' =>
+      match n / 10 with
+        | 0 => acc'
+        | n' => nr_to_string_aux time' n' acc'
+      end
+  end.
+
+Definition nr_to_string (n : Z) : string :=
+match n with
+| Z0 => "0"
+| Zpos _ => nr_to_string_aux 15 n ""
+| Zneg l => String "-" (nr_to_string_aux 15 (Zpos l) "")
+end.
+
+
+Compute string_of_list_ascii ( digit_to_ascii (10) :: digit_to_ascii 1 :: nil ).
 
 Inductive AExp:=
 | aconst : newNr -> AExp (*constanta de tip int*)
@@ -67,7 +152,8 @@ Inductive AExp:=
 | impartire : AExp -> AExp -> AExp
 | modulo : AExp -> AExp -> AExp
 | putere : AExp -> AExp -> AExp
-| toNr : BExp -> AExp (*transforma un bool intr-un numar*)
+| boolToNr : BExp -> AExp (*transforma un bool intr-un numar*)
+| strToNr : SExp -> AExp (*transforma un string intr-un numar*)
 | strLen : SExp -> AExp (* returneaza lungimea unui string*)
 with BExp :=
 | bconst : newBool -> BExp (*constanta de tip bool*)
@@ -94,9 +180,10 @@ Coercion bvar : Var >-> BExp.
 Coercion svar : Var >-> SExp.
 
 Notation "'Concat(' S1 , S2 )" := (sconcat S1 S2) (at level 50, left associativity).
-Notation "'ToNr(' S )" := (toNr S) (at level 0).
+Notation "'BoolToNr(' B )" := (boolToNr B) (at level 0).
+Notation "'StrToNr(' S )" := (strToNr S) (at level 0).
 Notation "'ToBool(' S )" := (toBool S) (at level 0).
-Notation "'ToString(' S )" := (toString S) (at level 0).
+Notation "'ToStr(' S )" := (toString S) (at level 0).
 Notation "'StrLen(' S )" := (strLen S) (at level 0).
 Notation "'s*' V" := (ref_str V) (at level 0).
 
@@ -118,8 +205,8 @@ Notation "A ||' B" := (si_logic A B) (at level 56, left associativity).
 Notation "A 'xor' B" := (sau_exclusiv A B) (at level 56, left associativity).
 Notation "A <=' B" := (mai_micEq A B) (at level 52, left associativity).
 Notation "A <' B" := (mai_mic A B) (at level 52, left associativity).
-Notation "A >=' B" := (mai_micEq A B) (at level 52, left associativity).
-Notation "A >' B" := (mai_mic A B) (at level 52, left associativity).
+Notation "A >=' B" := (mai_mareEq A B) (at level 52, left associativity).
+Notation "A >' B" := (mai_mare A B) (at level 52, left associativity).
 Notation "A ==' B" := (egalitate A B) (at level 53, left associativity).
 Notation "A !=' B" := (egalitate A B) (at level 53, left associativity).
 Notation "'b*' V" := (ref_bool V) (at level 0).
@@ -155,7 +242,7 @@ variabile doar cu o valoare introdusa manual*)
 (*tip nou pentru case-urile din switch*)
 with Cases :=
  caseDefault : Stmt -> Cases (*cazul implicit al switch-ului*)
-| caseOther : AExp -> Stmt -> Cases. (*alte cazuri*)
+| caseOther : newNr -> Stmt -> Cases. (*alte cazuri*)
 
 (*inafara functiilor se pot declara variabile
  doar cu valoarea default*)
@@ -174,6 +261,9 @@ Inductive newType : Type :=
 | strType : newString -> newType (*variabila este de tip string*)
 | code : Stmt -> newType. (*codul unei funcii*)
 
+Coercion nrType : newNr >-> newType.
+Coercion boolType : newBool >-> newType.
+Coercion strType : newString >-> newType.
 Coercion code : Stmt >-> newType.
 
 Notation "'int**' V <-- P" := (point_int V P) (at level 90).
@@ -262,26 +352,51 @@ Check
      switch'("a"){ default:{ skip }; }end
   }.
 
+Definition EqForTypes (a b : newType) : bool :=
+match a, b with
+| error, error => true
+| nrType _, nrType _ => true
+| boolType _, boolType _ => true
+| strType _, strType _ => true
+| code _, code _ => true
+| _, _ => false
+end.
 
 Definition Memory := nat -> newType.
 Definition State := Var -> nat.
 Inductive MemoryLayer := 
-| pair : State -> Memory -> nat -> MemoryLayer.
-Notation "<< S , M , N >>" := (pair S M N) (at level 0).
+| pair : State -> Memory -> nat -> State -> Memory -> nat -> MemoryLayer.
+Notation "<< S , M , N >>-<< GS , GM , GN >>" := (pair S M N GS GM GN) (at level 0).
 
 Definition getVal (m : MemoryLayer) (v : Var) : newType :=
 match m with
-| pair st mem _ => mem (st v)
+| pair st mem _ gst gmem _ => if (EqForTypes ( mem (st v) ) error) 
+                              then gmem(gst v) else mem(st v)
 end.
 
-Definition getMaxPos (m : MemoryLayer) : nat :=
+Definition getLocalMaxPos (m : MemoryLayer) : nat :=
 match m with
-| pair _ _ max => max
+| pair _ _ max _ _ _  => max
 end.
 
-Definition getAdress (m:MemoryLayer) (v : Var) : nat :=
+Definition getGlobalMaxPos (m : MemoryLayer) : nat :=
 match m with
-| pair state _ _ => state v
+| pair _ _ _ _ _ max  => max
+end.
+
+Definition getLocalAdress (m:MemoryLayer) (v : Var) : nat :=
+match m with
+| pair state _ _ _ _ _ => state v
+end.
+
+Definition getGlobalAdress (m:MemoryLayer) (v:Var) : nat :=
+match m with
+| pair _ _ _ state _ _ => state v
+end.
+
+Definition getAdress (m:MemoryLayer) (v:Var) : nat :=
+match m with
+| pair st _ _ gst _ _ => if (Nat.eqb (st v) 0%nat) then gst v else st v
 end.
 
 Definition updateState (st : State) (v : Var) (n : nat) : State:= 
@@ -290,17 +405,47 @@ fun x => if (Var_beq x v) then n else st x.
 Definition updateMemory (mem : Memory) (n : nat) (val : newType) : Memory :=
 fun n' => if (Nat.eqb n' n) then val else mem n'. 
 
-Definition update (M : MemoryLayer) (V : Var) (T : newType) (pos : nat) : MemoryLayer :=
+Definition updateLocal (M : MemoryLayer) (V : Var) (T : newType) (pos : nat) : MemoryLayer :=
 match M with
-|<<st, mem, max>> => if (andb (Nat.eqb pos (getAdress M V) ) (Nat.eqb pos 0) ) then
-       <<st, mem, max>> else
+|<<st, mem, max>>-<<gst, gmem, gmax>> => if (andb (Nat.eqb pos (getLocalAdress M V) ) (Nat.eqb pos 0) ) then
+       <<st, mem, max>>-<<gst, gmem, gmax>> else
        <<updateState st V pos, updateMemory mem pos T, 
-      (if (Nat.ltb pos max) then max else Nat.add max 1) >>
+      (if (Nat.ltb pos max) then max else Nat.add max 1) >>-<<gst, gmem, gmax>>
 end.
+
+Definition updateGlobal (M : MemoryLayer) (V : Var) (T : newType) (pos : nat) : MemoryLayer :=
+match M with
+|<<st, mem, max>>-<<gst, gmem, gmax>> => if (andb (Nat.eqb pos (getGlobalAdress M V) ) (Nat.eqb pos 0) ) then
+       <<st, mem, max>>-<<gst, gmem, gmax>> else
+       <<st, mem, max>>-<<updateState gst V pos, updateMemory gmem pos T, 
+      (if (Nat.ltb pos gmax) then gmax else Nat.add gmax 1) >>
+end.
+
+Definition updateLocalAtAdress (M : MemoryLayer) (addr : nat) (T : newType): MemoryLayer :=
+match M with
+|<<st, mem, max>>-<<gst, gmem, gmax>> => if (Nat.eqb addr 0) then
+       <<st, mem, max>>-<<gst, gmem, gmax>> else
+       <<st, updateMemory mem addr T, max >>-<<gst, gmem, gmax>>
+end.
+
+Definition updateGlobalAtAdress (M : MemoryLayer) (addr : nat) (T : newType): MemoryLayer :=
+match M with
+|<<st, mem, max>>-<<gst, gmem, gmax>> => if (Nat.eqb addr 0) then
+       <<st, mem, max>>-<<gst, gmem, gmax>> else
+       <<st, mem, max>>-<<gst, updateMemory gmem addr T, gmax >>
+end.
+
+Definition updateAtAdress (M : MemoryLayer) (addr : nat) (T : newType) : MemoryLayer :=
+match M with
+|<<st, mem, max>>-<<gst, gmem, gmax>> => if (EqForTypes (mem addr) error)
+                                         then updateGlobalAtAdress M addr T
+                                         else updateLocalAtAdress M addr T
+end.
+
  
 Definition mem0 : Memory := fun n => error.
 Definition state0 : State := fun x => 0%nat.
-Definition stack0 := <<state0, mem0, 1>>.
+Definition stack0 := <<state0, mem0, 1>>-<<state0, mem0, 1>>.
 
 Definition newPlus (a b : newType) :=
 match a, b with
@@ -370,11 +515,16 @@ end.
 
 Definition newToNr (a : newType) := 
 match a with
+|nrType n => nrType n
 |boolType a' => match a' with
                 | errBool => nrType errNr
                 | boolVal b => if (b) then (nrType 1) else (nrType 0)
                 end
-|_ => error
+|strType s' => match s' with 
+               | strVal s => str_toNewNr s
+               | errStr => nrType errNr
+               end
+|_ => nrType errNr
 end.
 
 Definition notb (a : bool) : bool :=
@@ -437,12 +587,34 @@ end.
 
 Definition newToBool (a : newType) := 
 match a with
-|nrType a' => match a' with
-                | errNr => nrType errNr
+| boolType b => boolType b
+| nrType a' => match a' with
+                | errNr => boolType errBool
                 | nrVal n => if (Z.eqb n 0) then (boolType false) else (boolType true)
                 end
-|_ => error
+| strType s => match s with
+               | strVal s'=> if (string_dec s' "true") then (boolType true) 
+                              else (boolType false)
+               | errStr => boolType errBool
+               end
+|_ => boolType errBool
 end.
+
+Definition newToStr (a : newType) :=
+match a with 
+| boolType b => match b with 
+                | errBool => errString
+                | boolVal b' => if (b') then str("true") else str("false")
+                end
+| strType s => strType s
+| nrType n => match n with
+              | errNr => errString
+              | nrVal n' => str(nr_to_string n')
+              end
+| _ => strType errString
+end.
+
+Compute newToStr (nrType 10).
 
 
 Reserved Notation "STR '=S[' St ']S>' N" (at level 60).
@@ -454,6 +626,10 @@ Inductive seval : SExp -> MemoryLayer -> newType -> Prop :=
     s2 =S[ sigma ]S> st2 ->
     s = newStrcat st1 st2 ->
     Concat( s1 , s2 ) =S[ sigma ]S> s
+| s_tostr : forall s1 sigma t1 a,
+    t1 = getVal sigma s1 ->
+    a = newToStr t1 ->
+    ToStr( s1 ) =S[ sigma ]S> a
 where "STR '=S[' St ']S>' N" := (seval STR St N).
 
 
@@ -496,10 +672,14 @@ Inductive aeval : AExp -> MemoryLayer -> newType -> Prop :=
     a1 =S[ sigma ]S> s1 ->
     n = newStrlen s1 ->
     StrLen( a1 ) =A[ sigma ]A> n
-| e_tonr : forall b1 sigma t1 a,
+| e_booltonr : forall b1 sigma t1 a,
     b1 =B[ sigma ]B> t1 ->
     a = newToNr t1 ->
-    ToNr( b1 ) =A[ sigma ]A> a
+    BoolToNr( b1 ) =A[ sigma ]A> a
+| e_strtonr : forall s1 sigma t1 a,
+    s1 =S[ sigma ]S> t1 ->
+    a = newToNr t1 ->
+    StrToNr( s1 ) =A[ sigma ]A> a
 where "A '=A[' S ']A>' N" := (aeval A S N)
 with beval : BExp -> MemoryLayer -> newType -> Prop :=
 | e_true : forall sigma, true =B[ sigma ]B> boolType true
@@ -569,32 +749,22 @@ with beval : BExp -> MemoryLayer -> newType -> Prop :=
     ToBool( a1 ) =B[ sigma ]B> b
 where "B '=B[' S ']B>' B'" := (beval B S B').
 
-Definition stack1 := update stack0 "x" (boolType true) (getMaxPos stack0).
-Definition stack2 := update stack1 "y" (boolType false) (getMaxPos stack1).
-Compute getAdress stack2 "x".
-Compute getAdress stack2 "y".
+Definition stack1 := updateLocal stack0 "x" (boolType true) (getLocalMaxPos stack0).
+Definition stack2 := updateLocal stack1 "y" (boolType false) (getLocalMaxPos stack1).
+Compute getLocalAdress stack2 "x".
+Compute getLocalAdress stack2 "y".
 
-Example ex_expr : ToNr("x") +' toNr(!' "y") =A[ stack2 ]A> nrType 2.
+Example ex_expr : BoolToNr("x") +' BoolToNr(!' "y") =A[ stack2 ]A> nrType 2.
 Proof. 
   eapply e_add.
-  -eapply e_tonr. 
-    +eapply e_bvar.
+  -eapply e_booltonr.
+    + eapply e_bvar.
     +simpl. trivial.
-  -eapply e_tonr. 
+  -eapply e_booltonr. 
     +eapply e_notfalse. eapply e_bvar.
     +simpl. trivial.
   -simpl. trivial.
 Qed.
-
-Definition EqForTypes (a b : newType) : bool :=
-match a, b with
-| error, error => true
-| nrType _, nrType _ => true
-| boolType _, boolType _ => true
-| strType _, strType _ => true
-| code _, code _ => true
-| _, _ => false
-end.
 
 Definition getStmt (cod : newType) : Stmt :=
 match cod with
@@ -602,7 +772,37 @@ match cod with
 | _ => skip
 end.
 
-Reserved Notation "( L )-[ M1 ]=> M2" (at level 60).
+Definition TypeToBool (b : newType) : bool :=
+match b with
+| boolType b' => match b' with
+                 |boolVal bo => bo
+                 |errBool => false
+                 end
+| _ => false
+end.
+
+Definition get_caseStmt (C : Cases) : Stmt :=
+match C with
+| default:{ s }; => s
+| case( _ ):{ s }; => s
+end.
+
+Definition checkCase (C : Cases ) (n : newType) : bool :=
+match C with
+| default:{ _ }; => true
+| case( a ):{ _ }; => TypeToBool (newComp "eq" a n)
+end.
+
+Fixpoint get_switch_case (n : newType) (cl : list Cases) : Stmt :=
+match n with
+| nrVal n' => match cl with 
+              | nil => skip
+              | x :: next => if (checkCase x n) then (get_caseStmt x) else (get_switch_case n next)
+              end
+| _ => skip
+end.
+ 
+Reserved Notation " L -[ M1 ]=> M2" (at level 60).
 Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> Prop :=
 | st_skip : forall sigma,
    ( skip )-[ sigma ]=> sigma
@@ -612,56 +812,56 @@ Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> Prop :=
    ( s1 ;; s2 )-[ sigma ]=> sigma2
 | st_int : forall s a val sigma sigma1,
     val =A[ sigma ]A> a ->
-    sigma1 = update sigma s a (getMaxPos sigma) ->
+    sigma1 = updateLocal sigma s a (getLocalMaxPos sigma) ->
     ( int' s <-- val )-[ sigma ]=> sigma1
 | st_bool : forall s b val sigma sigma1,
     val =B[ sigma ]B> b ->
-    sigma1 = update sigma s b (getMaxPos sigma) ->
+    sigma1 = updateLocal sigma s b (getLocalMaxPos sigma) ->
     ( bool' s <-- val)-[ sigma ]=> sigma1
 | st_string : forall s val sigma sigma1 str,
     val =S[ sigma ]S> str ->
-    sigma1 = update sigma s str (getMaxPos sigma) ->
+    sigma1 = updateLocal sigma s str (getLocalMaxPos sigma) ->
     ( string' s <-- val )-[ sigma ]=> sigma1
 | st_asigint : forall s a val sigma sigma1,
     EqForTypes (getVal sigma s) (nrType 0) = true ->
     val =A[ sigma ]A> a ->
-    sigma1 = update sigma s a (getAdress sigma s) ->
+    sigma1 = updateAtAdress sigma (getAdress sigma s) a ->
     ( s :N= val )-[ sigma ]=> sigma1
 | st_asigbool : forall s b val sigma sigma1,
     EqForTypes (getVal sigma s) (boolType false) = true ->
     val =B[ sigma ]B> b ->
-    sigma1 = update sigma s b (getAdress sigma s) ->
+    sigma1 = updateAtAdress sigma (getAdress sigma s) b ->
     ( s :B= val )-[ sigma ]=> sigma1
 | st_asigstring : forall s val sigma sigma1 str,
     EqForTypes (getVal sigma s) (strType str("") ) = true ->
     val =S[ sigma ]S> str ->
-    sigma1 = update sigma s str (getAdress sigma s) ->
+    sigma1 = updateAtAdress sigma (getAdress sigma s) str  ->
     ( s :S= val )-[ sigma ]=> sigma1
 | st_iffalse : forall b s1 sigma,
-    b =B[ sigma ]B> boolType false ->
+    b =B[ sigma ]B> false ->
     ( ifthen b s1 )-[ sigma ]=> sigma
 | st_iftrue : forall b s1 sigma sigma1,
-    b =B[ sigma ]B> boolType true ->
+    b =B[ sigma ]B> true ->
     ( s1 )-[ sigma ]=> sigma1 ->
     ( ifthen b s1 )-[ sigma ]=> sigma1
 | st_ifelsefalse : forall b s1 s2 sigma sigma2,
-    b =B[ sigma ]B> boolType false ->
+    b =B[ sigma ]B> false ->
     ( s2 )-[ sigma ]=> sigma2 ->
     ( ifthenelse b s1 s2 )-[ sigma ]=> sigma2
 | st_ifelsetrue : forall b s1 s2 sigma sigma1,
-    b =B[ sigma ]B> boolType true ->
+    b =B[ sigma ]B> true ->
     ( s1 )-[ sigma ]=> sigma1 ->
     ( ifthenelse b s1 s2 )-[ sigma ]=> sigma1
 | st_whilefalse : forall b s sigma,
-    b =B[ sigma ]B> boolType false ->
+    b =B[ sigma ]B> false ->
     ( whileloop b s )-[ sigma ]=> sigma
 | st_whiletrue : forall b s sigma sigma1,
-    b =B[ sigma ]B> boolType true ->
+    b =B[ sigma ]B> true ->
     ( s ;; whileloop b s )-[ sigma ]=> sigma1 ->
     ( whileloop b s )-[ sigma ]=> sigma1
 | st_forloop_false : forall a b st s1 sigma sigma1,
     ( a )-[ sigma ]=> sigma1 ->
-    b =B[ sigma1 ]B> boolType false ->
+    b =B[ sigma1 ]B> false ->
     ( forloop a b st s1 )-[ sigma ]=> sigma1
 | st_forloop_true : forall a b st s1 sigma sigma1 sigma2,
     ( a )-[ sigma ]=> sigma1 ->
@@ -669,54 +869,68 @@ Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> Prop :=
     ( forloop a b st s1 )-[ sigma ]=> sigma2
 | st_intpoint : forall V P sigma sigma1,
     EqForTypes (getVal sigma P) (nrType 0) = true ->
-    sigma1 = update sigma V (getVal sigma P) (getAdress sigma P) ->
+    sigma1 = updateLocal sigma V (getVal sigma P) (getAdress sigma P) ->
     ( int** V <-- P )-[ sigma ]=> sigma1
 | st_boolpoint : forall V P sigma sigma1,
     EqForTypes (getVal sigma P) (boolType false) = true ->
-    sigma1 = update sigma V (getVal sigma P) (getAdress sigma P) ->
+    sigma1 = updateLocal sigma V (getVal sigma P) (getAdress sigma P) ->
     ( bool** V <-- P )-[ sigma ]=> sigma1
 | st_strpoint : forall V P sigma sigma1,
     EqForTypes (getVal sigma P) (strType str("") ) = true ->
-    sigma1 = update sigma V (getVal sigma P) (getAdress sigma P) ->
+    sigma1 = updateLocal sigma V (getVal sigma P) (getAdress sigma P) ->
     ( string** V <-- P )-[ sigma ]=> sigma1
 | st_intpoint_asig : forall V E i1 sigma sigma1,
     EqForTypes (getVal sigma V) (nrType 0) = true ->
     E =A[ sigma ]A> i1 ->
-    sigma1 = update sigma V i1 (getAdress sigma V) ->
+    sigma1 = updateAtAdress sigma (getLocalAdress sigma V) i1  ->
     ( n* V ::= E )-[ sigma ]=> sigma1 
 | st_boolpoint_asig : forall V E i1 sigma sigma1,
     EqForTypes (getVal sigma V) (boolType false) = true ->
     E =B[ sigma ]B> i1 ->
-    sigma1 = update sigma V i1 (getAdress sigma V) ->
+    sigma1 = updateAtAdress sigma (getAdress sigma V) i1 ->
    ( b* V ::= E )-[ sigma ]=> sigma1 
 | st_strpoint_asig : forall V E i1 sigma sigma1,
     EqForTypes (getVal sigma V) (strType str("") ) = true ->
     E =S[ sigma ]S> i1 ->
-    sigma1 = update sigma V i1 (getAdress sigma V) ->
+    sigma1 = updateAtAdress sigma (getAdress sigma V) i1  ->
    ( s* V ::= E )-[ sigma ]=> sigma1 
-| st_callfun : forall s stmt sigma sigma1,
+| st_callfun : forall s l stmt sigma sigma1,
     stmt = getStmt (getVal sigma s ) ->
     ( stmt )-[ sigma ]=> sigma1 ->
-    ( call s (( )) )-[ sigma ]=> sigma1
-where "( L )-[ M1 ]=> M2" := (stmt_eval L M1 M2).
+    ( apelfunc s l )-[ sigma ]=> sigma1
+| e_switch : forall a cl sigma n v sigma',
+    a =A[ sigma ]A> n ->
+    v = (get_switch_case n cl) ->
+    v -[ sigma ]=> sigma' ->
+    switch a cl -[ sigma ]=> sigma'
+| e_dowhile_true : forall st b sigma sigma' sigma'',
+    st -[ sigma ]=> sigma' ->
+    b =B[ sigma' ]B> true ->
+    ( whileloop b st ) -[ sigma' ]=> sigma'' ->
+    do'{ st }while( b ) -[ sigma ]=> sigma'
+| e_dowhile_false : forall st b sigma sigma',
+    st -[ sigma ]=> sigma' ->
+    b =B[ sigma' ]B> false ->
+    do'{ st }while( b ) -[ sigma ]=> sigma'
+where "L -[ M1 ]=> M2" := (stmt_eval L M1 M2).
 
 Example ex2 : exists stack', ( int' "x" <-- 10 ;;
                                 int** "y" <-- "x" ;; 
-                                n* "y" ::= 15 )-[ stack0 ]=> stack'
+                                n* "y" ::= 15 ) -[ stack0 ]=> stack'
     /\ getVal stack' "x" = getVal stack' "y".
 Proof.
   eexists.
   split.
   *eapply st_secv.
-  -eapply st_int. eapply e_const. unfold update. simpl. trivial.
+  -eapply st_int. eapply e_const. unfold updateLocal. simpl. trivial.
   -eapply st_secv.
     --eapply st_intpoint.
     +simpl. trivial.
-    +unfold update. simpl. trivial.
+    +unfold updateLocal. simpl. trivial.
     --eapply st_intpoint_asig.
     +simpl. trivial.
     +eapply e_const.
-    +unfold update. simpl. trivial.
+    +unfold updateLocal. simpl. trivial.
   *simpl. unfold updateMemory. simpl. trivial.
 Qed.
 
@@ -728,49 +942,49 @@ Proof.
   *eapply st_secv.
   +eapply st_bool.
   -eapply e_false.
-  -unfold update. simpl. trivial.
+  -unfold updateLocal. simpl. trivial.
   +eapply st_asigbool.
   -simpl. trivial. 
   -eapply e_true.
-  -unfold update. simpl. trivial.
+  -unfold updateAtAdress. simpl. trivial.
   *simpl. unfold updateMemory. simpl. trivial.
 Qed.
 
-Reserved Notation "( L )-{ M1 }=> M2" (at level 60).
+Reserved Notation "L -{ M1 }=> M2" (at level 60).
 Inductive lang_eval : Lang -> MemoryLayer -> MemoryLayer -> Prop :=
 | l_secv : forall s1 s2 sigma sigma1 sigma2,
    ( s1 )-{ sigma }=> sigma1 ->
    ( s2 )-{ sigma1 }=> sigma2 ->
    ( s1 ;' s2 )-{ sigma }=> sigma2
 | l_int0 : forall s sigma sigma1,
-  sigma1 = update sigma s (nrType 0) (getMaxPos sigma) ->
+  sigma1 = updateGlobal sigma s (nrType 0) (getGlobalMaxPos sigma) ->
   ( int0' s )-{ sigma }=> sigma1
 | l_bool0 : forall s sigma sigma1,
-  sigma1 = update sigma s (boolType false) (getMaxPos sigma) ->
+  sigma1 = updateGlobal sigma s (boolType false) (getGlobalMaxPos sigma) ->
   ( bool0' s )-{ sigma }=> sigma1
 | l_string0 : forall s sigma sigma1,
-  sigma1 = update sigma s (strType str("") ) (getMaxPos sigma) ->
+  sigma1 = updateGlobal sigma s (strType str("") ) (getGlobalMaxPos sigma) ->
   ( string0' s )-{ sigma }=> sigma1
 | l_funMain : forall stmt sigma sigma1,
   ( stmt )-[ sigma ]=> sigma1 ->
   ( void main() { stmt } )-{ sigma }=> sigma1
 | l_function : forall s stmt sigma sigma1,
-  sigma1 = update sigma s (code stmt) (getMaxPos sigma) ->
+  sigma1 = updateGlobal sigma s (code stmt) (getGlobalMaxPos sigma) ->
   ( void s (){ stmt } )-{ sigma }=> sigma1
-where "( L )-{ M1 }=> M2" := (lang_eval L M1 M2).
+where "L -{ M1 }=> M2" := (lang_eval L M1 M2).
 
 Example ex4 : exists stack', 
   (int0' "x" ;' 
    bool0' "b" ;' 
    void main() {}
   )-{ stack0 }=> stack' 
-        /\ getVal stack' "x" = nrType 0 /\ getVal stack' "b" = boolType false.
+        /\ getVal stack' "x" = 0 /\ getVal stack' "b" = false.
 Proof.
   eexists.
   split.
   - eapply l_secv.
-  + eapply l_int0. unfold update. simpl. trivial.
-  + eapply l_secv. eapply l_bool0. unfold update. simpl. trivial.
+  + eapply l_int0. unfold updateGlobal. simpl. trivial.
+  + eapply l_secv. eapply l_bool0. unfold updateGlobal. simpl. trivial.
   eapply l_funMain. eapply st_skip.
   -split ; unfold updateMemory ; simpl ; trivial.
 Qed.
@@ -785,23 +999,44 @@ Definition sample1 :=
      call "fun" (())
   }.
 Example ex5 : exists stack', ( sample1 )-{ stack0 }=> stack' 
-      /\ getVal stack' "x" = nrType 100.
+      /\ getVal stack' "x" = 100.
 Proof.
   eexists.  
   split.
   -unfold sample1. eapply l_secv.
-    + eapply l_int0. unfold update. simpl. trivial.
+    + eapply l_int0. unfold updateGlobal. simpl. trivial.
     + eapply l_secv.
-      ++ eapply l_function. unfold update. simpl. trivial.
+      ++ eapply l_function. unfold updateGlobal. simpl. trivial.
       ++ eapply l_funMain.
         *eapply st_secv.
           **eapply st_asigint. simpl. trivial. 
-            eapply e_const. unfold update. simpl. trivial.
+            eapply e_const. unfold updateAtAdress. simpl. trivial.
           **eapply st_callfun. simpl. trivial. 
             eapply st_asigint. simpl. trivial.
-            eapply e_const. unfold update. simpl. trivial.
+            eapply e_const. unfold updateAtAdress. simpl. trivial.
    -simpl. unfold updateMemory. simpl. trivial.
 Qed.
- 
+
+Example ex6 : exists stack', 
+              (
+                int' "x" <-- 0 ;;
+                do'{
+                   "x" :N= "x" +' 2
+                }while("x" <' 0)
+              )-[ stack0 ]=> stack'
+    /\ getVal stack' "x" = 2.
+Proof.
+  eexists.
+  split.
+  -eapply st_secv.
+    +eapply st_int. eapply e_const. unfold updateLocal. simpl. trivial.
+    +eapply e_dowhile_false. 
+      *eapply st_asigint. simpl. trivial.
+       eapply e_add. eapply e_var. eapply e_const. simpl. trivial.
+       unfold updateLocal. simpl. trivial.
+      *eapply e_lessthan. eapply e_var. eapply e_const.
+       simpl. unfold Z.ltb. simpl. trivial.
+  -unfold updateMemory. simpl. trivial.
+Qed.
   
 
