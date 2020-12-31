@@ -103,8 +103,6 @@ match s with
         )
 end.
 
-Print ascii.
-
 Definition digit_to_ascii (n : Z) : ascii :=
 match n with
 |Z0 => "0"
@@ -137,9 +135,6 @@ match n with
 | Zpos _ => nr_to_string_aux 15 n ""
 | Zneg l => String "-" (nr_to_string_aux 15 (Zpos l) "")
 end.
-
-
-Compute string_of_list_ascii ( digit_to_ascii (10) :: digit_to_ascii 1 :: nil ).
 
 Inductive AExp:=
 | aconst : newNr -> AExp (*constanta de tip int*)
