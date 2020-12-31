@@ -893,17 +893,17 @@ Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> Prop :=
     stmt = getStmt (getVal sigma s ) ->
     ( stmt )-[ sigma ]=> sigma1 ->
     ( apelfunc s l )-[ sigma ]=> sigma1
-| e_switch : forall a cl sigma n v sigma',
+| st_switch : forall a cl sigma n v sigma',
     a =A[ sigma ]A> n ->
     v = (get_switch_case n cl) ->
     v -[ sigma ]=> sigma' ->
     switch a cl -[ sigma ]=> sigma'
-| e_dowhile_true : forall st b sigma sigma' sigma'',
+| st_dowhile_true : forall st b sigma sigma' sigma'',
     st -[ sigma ]=> sigma' ->
     b =B[ sigma' ]B> true ->
     ( whileloop b st ) -[ sigma' ]=> sigma'' ->
     do'{ st }while( b ) -[ sigma ]=> sigma'
-| e_dowhile_false : forall st b sigma sigma',
+| st_dowhile_false : forall st b sigma sigma',
     st -[ sigma ]=> sigma' ->
     b =B[ sigma' ]B> false ->
     do'{ st }while( b ) -[ sigma ]=> sigma'
@@ -1025,13 +1025,44 @@ Proof.
   split.
   -eapply st_secv.
     +eapply st_int. eapply e_const. unfold updateLocal. simpl. trivial.
-    +eapply e_dowhile_false. 
+    +eapply st_dowhile_false. 
       *eapply st_asigint. simpl. trivial.
        eapply e_add. eapply e_var. eapply e_const. simpl. trivial.
        unfold updateLocal. simpl. trivial.
       *eapply e_lessthan. eapply e_var. eapply e_const.
        simpl. unfold Z.ltb. simpl. trivial.
   -unfold updateMemory. simpl. trivial.
+Qed.
+
+Definition switch1 := (
+  int0' "x" ;'
+  void main() {
+     "x" :N= 5 ;;
+     switch'( "x" ){ 
+        case( 1 ):{ skip };
+        case( 3 ):{ "x" :N= 100 };
+        case( 5 ):{ "x" :N= 50 };
+        case( 7 ):{ bool' "y" <-- true};
+        default:{ "x" :N= 0 };
+     }end
+  }
+).
+
+Check switch1.
+
+Example ex_switch : exists stack', switch1 -{ stack0 }=> stack'
+        /\ getVal stack' "x" = 50.
+Proof.
+  eexists.
+  unfold switch1.
+  split.
+  -eapply l_secv.
+    +eapply l_int0. unfold updateGlobal. simpl. trivial.
+    +eapply l_funMain. eapply st_secv.
+      *eapply st_asigint. simpl. trivial. eapply e_const. unfold updateAtAdress. simpl. trivial.
+      *eapply st_switch. eapply e_var. simpl. trivial.
+      eapply st_asigint. trivial. eapply e_const. trivial.
+  -simpl. unfold updateMemory. simpl. reflexivity.
 Qed.
   
 
