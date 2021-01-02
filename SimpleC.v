@@ -234,6 +234,7 @@ variabile doar cu o valoare introdusa manual*)
 | forloop : Stmt -> BExp -> Stmt -> Stmt -> Stmt (*instructiunea repetitiva for*)
 | switch : AExp -> list Cases -> Stmt (*swtch() cu unul sau mai multe cazuri*)
 | apelfunc : Var -> list Var -> Stmt (*apelul unei functii*)
+| Return : Stmt (*instructune obligatorie la finalul unei functii*)
 (*tip nou pentru case-urile din switch*)
 with Cases :=
  caseDefault : Stmt -> Cases (*cazul implicit al switch-ului*)
@@ -254,6 +255,7 @@ Inductive newType : Type :=
 | nrType : newNr -> newType (*variabila este de tip numar*)
 | boolType : newBool -> newType (*variabila este de tip bool*)
 | strType : newString -> newType (*variabila este de tip string*)
+| pointer : nat -> bool -> newType (*pointer*)
 | code : Stmt -> newType. (*codul unei funcii*)
 
 Coercion nrType : newNr >-> newType.
@@ -299,7 +301,7 @@ Notation "'switch'(' E ){ C1 .. Cn '}end'" := (switch E (cons C1 .. (cons Cn nil
 Notation "'void' 'main()' { }" := (functiaMain skip)(at level 95).
 Notation "'void' 'main()' { S }" := (functiaMain S)(at level 95). 
 
-Notation "'void' N (){ }" := (functie N nil skip)(at level 95).
+Notation "'void' N (){ }" := (functie N nil Return)(at level 95).
 Notation "'void' N (){ S }" := (functie N nil S)(at level 95).
 Notation "'void' N (( A1 , .. , An )){ }" := (functie N (cons (Id A1) .. (cons (Id An) nil) .. ) skip)(at level 95).
 Notation "'void' N (( A1 , .. , An )){ S }" := (functie N (cons (Id A1) .. (cons (Id An) nil) .. ) S)(at level 95).
@@ -353,6 +355,7 @@ match a, b with
 | nrType _, nrType _ => true
 | boolType _, boolType _ => true
 | strType _, strType _ => true
+| pointer _ _, pointer _ _ => true
 | code _, code _ => true
 | _, _ => false
 end.
@@ -367,6 +370,29 @@ Definition getVal (m : MemoryLayer) (v : Var) : newType :=
 match m with
 | pair st mem _ gst gmem _ => if (EqForTypes ( mem (st v) ) error) 
                               then gmem(gst v) else mem(st v)
+end.
+
+
+Definition isLocal (m : MemoryLayer) (v : Var) : bool :=
+match m with
+| pair st mem _ gst gmem _ => if (EqForTypes ( mem (st v) ) error) 
+                              then false else true
+end.
+
+Definition getPointerAdress (a : newType) : nat :=
+match a with
+| pointer nr _ => nr
+| _ => 0
+end.
+
+Definition getPointerVal (m : MemoryLayer) (p : Var) : newType :=
+let point := getVal m p in
+match point with
+| pointer nr isl => match m with
+                    | pair _ mem _ _ gmem _ => if (isl) then
+                                              (mem (getPointerAdress point) ) else (gmem (getPointerAdress point) )
+                    end 
+| _ => error
 end.
 
 Definition getLocalMaxPos (m : MemoryLayer) : nat :=
@@ -437,10 +463,13 @@ match M with
                                          else updateLocalAtAdress M addr T
 end.
 
- 
 Definition mem0 : Memory := fun n => error.
 Definition state0 : State := fun x => 0%nat.
 Definition stack0 := <<state0, mem0, 1>>-<<state0, mem0, 1>>.
+Definition NewLocalStack (m:MemoryLayer) : MemoryLayer :=
+match m with
+| <<st, mem, max>>-<<gst, gmem, gmax>> => <<state0, mem0, 1>>-<<gst, gmem, gmax>>
+end.
 
 Definition newPlus (a b : newType) :=
 match a, b with
@@ -796,123 +825,137 @@ match n with
               end
 | _ => skip
 end.
- 
-Reserved Notation " L -[ M1 ]=> M2" (at level 60).
-Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> Prop :=
-| st_skip : forall sigma,
-   ( skip )-[ sigma ]=> sigma
-| st_secv : forall s1 s2 sigma sigma1 sigma2,
-   ( s1 )-[ sigma ]=> sigma1 ->
-   ( s2 )-[ sigma1 ]=> sigma2 ->
-   ( s1 ;; s2 )-[ sigma ]=> sigma2
-| st_int : forall s a val sigma sigma1,
+
+Definition MergeMemory (l g: MemoryLayer) : MemoryLayer :=
+match l, g with
+|<<st1, mem1, max1>>-<<gst1, gmem1, gmax1>>, 
+    <<st2, mem2, max2>>-<<gst2, gmem2, gmax2>> => <<st1, mem1, max1>>-<<gst2, gmem2, gmax2>>
+end.
+
+
+Reserved Notation " L -[ M1 , S1 ]=> M2 , S2" (at level 60).
+Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> MemoryLayer -> MemoryLayer -> Prop :=
+| st_skip : forall sigma save,
+   ( skip )-[ sigma , save ]=> sigma , save
+| st_secv : forall s1 s2 sigma sigma1 sigma2 save save',
+   ( s1 )-[ sigma , save ]=> sigma1 , save ->
+   ( s2 )-[ sigma1 , save ]=> sigma2 , save' ->
+   ( s1 ;; s2 )-[ sigma , save ]=> sigma2 , save'
+| st_int : forall s a val sigma sigma1 save,
     val =A[ sigma ]A> a ->
     sigma1 = updateLocal sigma s a (getLocalMaxPos sigma) ->
-    ( int' s <-- val )-[ sigma ]=> sigma1
-| st_bool : forall s b val sigma sigma1,
+    ( int' s <-- val )-[ sigma , save ]=> sigma1 , save
+| st_bool : forall s b val sigma sigma1 save,
     val =B[ sigma ]B> b ->
     sigma1 = updateLocal sigma s b (getLocalMaxPos sigma) ->
-    ( bool' s <-- val)-[ sigma ]=> sigma1
-| st_string : forall s val sigma sigma1 str,
+    ( bool' s <-- val)-[ sigma , save ]=> sigma1 , save
+| st_string : forall s val sigma sigma1 str save,
     val =S[ sigma ]S> str ->
     sigma1 = updateLocal sigma s str (getLocalMaxPos sigma) ->
-    ( string' s <-- val )-[ sigma ]=> sigma1
-| st_asigint : forall s a val sigma sigma1,
+    ( string' s <-- val )-[ sigma , save ]=> sigma1 , save
+| st_asigint : forall s a val sigma sigma1 save,
     EqForTypes (getVal sigma s) (nrType 0) = true ->
     val =A[ sigma ]A> a ->
     sigma1 = updateAtAdress sigma (getAdress sigma s) a ->
-    ( s :N= val )-[ sigma ]=> sigma1
-| st_asigbool : forall s b val sigma sigma1,
+    ( s :N= val )-[ sigma , save ]=> sigma1 , save
+| st_asigbool : forall s b val sigma sigma1 save,
     EqForTypes (getVal sigma s) (boolType false) = true ->
     val =B[ sigma ]B> b ->
     sigma1 = updateAtAdress sigma (getAdress sigma s) b ->
-    ( s :B= val )-[ sigma ]=> sigma1
-| st_asigstring : forall s val sigma sigma1 str,
+    ( s :B= val )-[ sigma , save ]=> sigma1 , save
+| st_asigstring : forall s val sigma sigma1 str save,
     EqForTypes (getVal sigma s) (strType str("") ) = true ->
     val =S[ sigma ]S> str ->
     sigma1 = updateAtAdress sigma (getAdress sigma s) str  ->
-    ( s :S= val )-[ sigma ]=> sigma1
-| st_iffalse : forall b s1 sigma,
+    ( s :S= val )-[ sigma , save ]=> sigma1 , save
+| st_iffalse : forall b s1 sigma save,
     b =B[ sigma ]B> false ->
-    ( ifthen b s1 )-[ sigma ]=> sigma
-| st_iftrue : forall b s1 sigma sigma1,
+    ( ifthen b s1 )-[ sigma , save ]=> sigma , save
+| st_iftrue : forall b s1 sigma sigma1 save,
     b =B[ sigma ]B> true ->
-    ( s1 )-[ sigma ]=> sigma1 ->
-    ( ifthen b s1 )-[ sigma ]=> sigma1
-| st_ifelsefalse : forall b s1 s2 sigma sigma2,
+    ( s1 )-[ sigma , save ]=> sigma1 , save ->
+    ( ifthen b s1 )-[ sigma , save ]=> sigma1 , save
+| st_ifelsefalse : forall b s1 s2 sigma sigma2 save,
     b =B[ sigma ]B> false ->
-    ( s2 )-[ sigma ]=> sigma2 ->
-    ( ifthenelse b s1 s2 )-[ sigma ]=> sigma2
-| st_ifelsetrue : forall b s1 s2 sigma sigma1,
+    ( s2 )-[ sigma , save ]=> sigma2 , save ->
+    ( ifthenelse b s1 s2 )-[ sigma , save ]=> sigma2 , save
+| st_ifelsetrue : forall b s1 s2 sigma sigma1 save,
     b =B[ sigma ]B> true ->
-    ( s1 )-[ sigma ]=> sigma1 ->
-    ( ifthenelse b s1 s2 )-[ sigma ]=> sigma1
-| st_whilefalse : forall b s sigma,
+    ( s1 )-[ sigma , save ]=> sigma1 , save ->
+    ( ifthenelse b s1 s2 )-[ sigma , save ]=> sigma1 , save
+| st_whilefalse : forall b s sigma save,
     b =B[ sigma ]B> false ->
-    ( whileloop b s )-[ sigma ]=> sigma
-| st_whiletrue : forall b s sigma sigma1,
+    ( whileloop b s )-[ sigma , save ]=> sigma , save
+| st_whiletrue : forall b s sigma sigma1 save,
     b =B[ sigma ]B> true ->
-    ( s ;; whileloop b s )-[ sigma ]=> sigma1 ->
-    ( whileloop b s )-[ sigma ]=> sigma1
-| st_forloop_false : forall a b st s1 sigma sigma1,
-    ( a )-[ sigma ]=> sigma1 ->
+    ( s ;; whileloop b s )-[ sigma , save ]=> sigma1 , save ->
+    ( whileloop b s )-[ sigma , save]=> sigma1 , save
+| st_forloop_false : forall a b st s1 sigma sigma1 save,
+    ( a )-[ sigma, save]=> sigma1, save ->
     b =B[ sigma1 ]B> false ->
-    ( forloop a b st s1 )-[ sigma ]=> sigma1
-| st_forloop_true : forall a b st s1 sigma sigma1 sigma2,
-    ( a )-[ sigma ]=> sigma1 ->
-    (whileloop b (s1 ;; st) )-[ sigma1 ]=> sigma2 ->
-    ( forloop a b st s1 )-[ sigma ]=> sigma2
-| st_intpoint : forall V P sigma sigma1,
+    ( forloop a b st s1 )-[ sigma , save ]=> sigma1 , save
+| st_forloop_true : forall a b st s1 sigma sigma1 sigma2 save,
+    ( a )-[ sigma , save]=> sigma1,save ->
+    (whileloop b (s1 ;; st) )-[ sigma1 , save ]=> sigma2 , save ->
+    ( forloop a b st s1 )-[ sigma , save ]=> sigma2 , save
+| st_intpoint : forall V P sigma sigma1 isl save,
     EqForTypes (getVal sigma P) (nrType 0) = true ->
-    sigma1 = updateLocal sigma V (getVal sigma P) (getAdress sigma P) ->
-    ( int** V <-- P )-[ sigma ]=> sigma1
-| st_boolpoint : forall V P sigma sigma1,
+    isl = isLocal sigma P ->
+    sigma1 = updateLocal sigma V (pointer (getAdress sigma P) isl) (getLocalMaxPos sigma) ->
+    ( int** V <-- P )-[ sigma , save]=> sigma1, save
+| st_boolpoint : forall V P sigma sigma1 isl save,
     EqForTypes (getVal sigma P) (boolType false) = true ->
-    sigma1 = updateLocal sigma V (getVal sigma P) (getAdress sigma P) ->
-    ( bool** V <-- P )-[ sigma ]=> sigma1
-| st_strpoint : forall V P sigma sigma1,
+    isl = isLocal sigma P ->
+    sigma1 = updateLocal sigma V (pointer (getAdress sigma P) isl) (getLocalMaxPos sigma) ->
+    ( bool** V <-- P )-[ sigma , save]=> sigma1 , save
+| st_strpoint : forall V P sigma sigma1 isl save,
     EqForTypes (getVal sigma P) (strType str("") ) = true ->
-    sigma1 = updateLocal sigma V (getVal sigma P) (getAdress sigma P) ->
-    ( string** V <-- P )-[ sigma ]=> sigma1
-| st_intpoint_asig : forall V E i1 sigma sigma1,
-    EqForTypes (getVal sigma V) (nrType 0) = true ->
+    isl = isLocal sigma P -> 
+    sigma1 = updateLocal sigma V (pointer (getAdress sigma P) isl) (getLocalMaxPos sigma) ->
+    ( string** V <-- P )-[ sigma , save]=> sigma1 , save
+| st_intpoint_asig : forall V E i1 sigma sigma1 save,
+    EqForTypes (getVal sigma V) (pointer 0 false) = true ->
     E =A[ sigma ]A> i1 ->
-    sigma1 = updateAtAdress sigma (getLocalAdress sigma V) i1  ->
-    ( n* V ::= E )-[ sigma ]=> sigma1 
-| st_boolpoint_asig : forall V E i1 sigma sigma1,
-    EqForTypes (getVal sigma V) (boolType false) = true ->
+    sigma1 = updateAtAdress sigma (getPointerAdress (getVal sigma V) ) i1  ->
+    ( n* V ::= E )-[ sigma , save ]=> sigma1, save
+| st_boolpoint_asig : forall V E i1 sigma sigma1 save,
+    EqForTypes (getVal sigma V) (pointer 0 false) = true ->
     E =B[ sigma ]B> i1 ->
-    sigma1 = updateAtAdress sigma (getAdress sigma V) i1 ->
-   ( b* V ::= E )-[ sigma ]=> sigma1 
-| st_strpoint_asig : forall V E i1 sigma sigma1,
-    EqForTypes (getVal sigma V) (strType str("") ) = true ->
+    sigma1 = updateAtAdress sigma (getPointerAdress (getVal sigma V) ) i1 ->
+   ( b* V ::= E )-[ sigma , save ]=> sigma1 , save
+| st_strpoint_asig : forall V E i1 sigma sigma1 save,
+    EqForTypes (getVal sigma V) (pointer 0 false) = true ->
     E =S[ sigma ]S> i1 ->
-    sigma1 = updateAtAdress sigma (getAdress sigma V) i1  ->
-   ( s* V ::= E )-[ sigma ]=> sigma1 
-| st_callfun : forall s l stmt sigma sigma1,
+    sigma1 = updateAtAdress sigma (getPointerAdress (getVal sigma V) ) i1  ->
+   ( s* V ::= E )-[ sigma , save ]=> sigma1 , save
+| st_callfun : forall s l stmt sigma sigma1 save,
     stmt = getStmt (getVal sigma s ) ->
-    ( stmt )-[ sigma ]=> sigma1 ->
-    ( apelfunc s l )-[ sigma ]=> sigma1
-| st_switch : forall a cl sigma n v sigma',
+    ( stmt )-[ NewLocalStack sigma , sigma]=> sigma1 , save ->
+    ( apelfunc s l )-[ sigma , save ]=> sigma1 , save
+| st_return : forall sigma sigma' save save',
+    save' = stack0 ->
+    sigma' = MergeMemory save sigma ->
+    ( Return )-[sigma, save]=> sigma', save'
+| st_switch : forall a cl sigma n v sigma' save,
     a =A[ sigma ]A> n ->
     v = (get_switch_case n cl) ->
-    v -[ sigma ]=> sigma' ->
-    switch a cl -[ sigma ]=> sigma'
-| st_dowhile_true : forall st b sigma sigma' sigma'',
-    st -[ sigma ]=> sigma' ->
+    v -[ sigma , save]=> sigma' , save ->
+    switch a cl -[ sigma , save ]=> sigma' , save
+| st_dowhile_true : forall st b sigma sigma' sigma'' save,
+    st -[ sigma , save ]=> sigma' , save ->
     b =B[ sigma' ]B> true ->
-    ( whileloop b st ) -[ sigma' ]=> sigma'' ->
-    do'{ st }while( b ) -[ sigma ]=> sigma'
-| st_dowhile_false : forall st b sigma sigma',
-    st -[ sigma ]=> sigma' ->
+    ( whileloop b st ) -[ sigma' , save ]=> sigma'' , save ->
+    do'{ st }while( b ) -[ sigma , save ]=> sigma' , save
+| st_dowhile_false : forall st b sigma sigma' save,
+    st -[ sigma , save ]=> sigma' , save ->
     b =B[ sigma' ]B> false ->
-    do'{ st }while( b ) -[ sigma ]=> sigma'
-where "L -[ M1 ]=> M2" := (stmt_eval L M1 M2).
+    do'{ st }while( b ) -[ sigma , save ]=> sigma' , save
+where "L -[ M1 , S1 ]=> M2 , S2" := (stmt_eval L M1 S1 M2 S2).
 
 Example ex2 : exists stack', ( int' "x" <-- 10 ;;
                                 int** "y" <-- "x" ;; 
-                                n* "y" ::= 15 ) -[ stack0 ]=> stack'
-    /\ getVal stack' "x" = getVal stack' "y".
+                                n* "y" ::= 15 ) -[ stack0 , stack0 ]=> stack' , stack0
+    /\ getVal stack' "x" = getPointerVal stack' "y".
 Proof.
   eexists.
   split.
@@ -922,6 +965,7 @@ Proof.
     --eapply st_intpoint.
     +simpl. trivial.
     +unfold updateLocal. simpl. trivial.
+    +unfold updateLocal. simpl. trivial.
     --eapply st_intpoint_asig.
     +simpl. trivial.
     +eapply e_const.
@@ -929,7 +973,7 @@ Proof.
   *simpl. unfold updateMemory. simpl. trivial.
 Qed.
 
-Example ex3 : exists stack', ( bool' "x" <--false ;; "x" :B= true )-[ stack0 ]=> stack'
+Example ex3 : exists stack', ( bool' "x" <--false ;; "x" :B= true )-[ stack0 , stack0 ]=> stack' , stack0
     /\ getVal stack' "x" = boolType true.
 Proof.
   eexists. 
@@ -960,8 +1004,9 @@ Inductive lang_eval : Lang -> MemoryLayer -> MemoryLayer -> Prop :=
 | l_string0 : forall s sigma sigma1,
   sigma1 = updateGlobal sigma s (strType str("") ) (getGlobalMaxPos sigma) ->
   ( string0' s )-{ sigma }=> sigma1
-| l_funMain : forall stmt sigma sigma1,
-  ( stmt )-[ sigma ]=> sigma1 ->
+| l_funMain : forall stmt sigma sigma1 save,
+  save = stack0 ->
+  ( stmt )-[ sigma , save ]=> sigma1 , save->
   ( void main() { stmt } )-{ sigma }=> sigma1
 | l_function : forall s stmt sigma sigma1,
   sigma1 = updateGlobal sigma s (code stmt) (getGlobalMaxPos sigma) ->
@@ -980,14 +1025,15 @@ Proof.
   - eapply l_secv.
   + eapply l_int0. unfold updateGlobal. simpl. trivial.
   + eapply l_secv. eapply l_bool0. unfold updateGlobal. simpl. trivial.
-  eapply l_funMain. eapply st_skip.
-  -split ; unfold updateMemory ; simpl ; trivial.
+  eapply l_funMain. trivial. eapply st_skip.
+  -split; simpl; unfold updateMemory; simpl; trivial.
 Qed.
 
 Definition sample1 := 
   int0' "x" ;' 
   void "fun" (){
-    "x" :N= 100
+    "x" :N= 100 ;;
+    Return
   } ;'
   void main() {
      "x" :N= 654 ;;
@@ -1002,13 +1048,15 @@ Proof.
     + eapply l_int0. unfold updateGlobal. simpl. trivial.
     + eapply l_secv.
       ++ eapply l_function. unfold updateGlobal. simpl. trivial.
-      ++ eapply l_funMain.
+      ++ eapply l_funMain. trivial.
         *eapply st_secv.
           **eapply st_asigint. simpl. trivial. 
             eapply e_const. unfold updateAtAdress. simpl. trivial.
-          **eapply st_callfun. simpl. trivial. 
-            eapply st_asigint. simpl. trivial.
-            eapply e_const. unfold updateAtAdress. simpl. trivial.
+          **eapply st_callfun. simpl. trivial.
+            eapply st_secv.
+            --eapply st_asigint. simpl. trivial.
+              eapply e_const. unfold updateAtAdress. simpl. trivial.
+            --eapply st_return. trivial. trivial.
    -simpl. unfold updateMemory. simpl. trivial.
 Qed.
 
@@ -1018,7 +1066,7 @@ Example ex6 : exists stack',
                 do'{
                    "x" :N= "x" +' 2
                 }while("x" <' 0)
-              )-[ stack0 ]=> stack'
+              )-[ stack0 , stack0 ]=> stack' , stack0
     /\ getVal stack' "x" = 2.
 Proof.
   eexists.
@@ -1047,9 +1095,7 @@ Definition switch1 := (
      }end
   }
 ).
-
 Check switch1.
-
 Example ex_switch : exists stack', switch1 -{ stack0 }=> stack'
         /\ getVal stack' "x" = 50.
 Proof.
@@ -1058,7 +1104,7 @@ Proof.
   split.
   -eapply l_secv.
     +eapply l_int0. unfold updateGlobal. simpl. trivial.
-    +eapply l_funMain. eapply st_secv.
+    +eapply l_funMain. trivial. eapply st_secv.
       *eapply st_asigint. simpl. trivial. eapply e_const. unfold updateAtAdress. simpl. trivial.
       *eapply st_switch. eapply e_var. simpl. trivial.
       eapply st_asigint. trivial. eapply e_const. trivial.
