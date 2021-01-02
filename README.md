@@ -5,7 +5,7 @@ Limbajul va avea urmatoarele functionlitati si instructiuni, inspirate din limba
 ```-tipuri de variabile + declarare de variabile de aceste tipuri - numere naturale, bool, string
 -operatii pe numere naturale: (+', -', *', /', %', ^')
 -operatii pe valori booleene: (<', <=', >', >=', !=', ==', &&', ||', !', xor'(sau exclusiv), xand'(si exclusiv))
--operatii pe stringuri (concat(str1, str2))
+-operatii pe stringuri (concat(str1, str2), strlen(str))
 -operatii de conversie intre tipuri: (toBool(nat), toNat(bool/string), toString(nat/bool))
 -instructiunea de atribuire
 -instructiuni conditionale: if' (conditie) {stmt} end'
