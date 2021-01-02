@@ -16,10 +16,8 @@ Limbajul va avea urmatoarele functionlitati si instructiuni, inspirate din limba
              for (initializare, conditie, asignare) {stmt} end'
 -instructiuni speciale: break (pentru a iesi fortat dintr-o bucla)
              continue (pentru a trece direct la urmatoarea iteratie dintr-o bucla)
--functii, apeluri de functii; functia obligatorie main -- fun main() {stmt}
-             alte functii -- fun_nat nume_functie(argumente) {stmt} returneaza un numar natural
-			  -- fun_bool nume_functie(argumente) {stmt} returneaza o valoare booleana
-			  -- fun_string nume_functie(argumente) {stmt}  returneaza un string
+-functii, apeluri de functii; functia obligatorie main -- void main() {stmt}
+             alte functii -- void nume_functie(argumente) {stmt} defineste o functie care nu returneaza nimic
 -variabile locale (in interiorul unei functii), variabile globale (definite inafara functiei main)
 -functii de input/output: read(variabila) citeste input-ul si-l pune intr-o variabila
 	     write_str(string) - afiseaza un mesaj, write(variabila) - afiseaza valoarea unei variabile```
