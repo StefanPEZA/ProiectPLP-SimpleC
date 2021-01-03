@@ -118,6 +118,7 @@ match n with
 |_ => ascii_of_nat 1
 end.
 
+
 Fixpoint nr_to_string_aux (time : nat) (n : Z) (acc : string) : string :=
   let acc' := String (digit_to_ascii (n mod 10)) acc in
   match time with
