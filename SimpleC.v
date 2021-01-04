@@ -367,17 +367,16 @@ Inductive MemoryLayer :=
 | pair : State -> Memory -> nat -> State -> Memory -> nat -> MemoryLayer.
 Notation "<< S , M , N >>-<< GS , GM , GN >>" := (pair S M N GS GM GN) (at level 0).
 
-Definition getVal (m : MemoryLayer) (v : Var) : newType :=
-match m with
-| pair st mem _ gst gmem _ => if (EqForTypes ( mem (st v) ) error) 
-                              then gmem(gst v) else mem(st v)
-end.
-
-
 Definition isLocal (m : MemoryLayer) (v : Var) : bool :=
 match m with
 | pair st mem _ gst gmem _ => if (EqForTypes ( mem (st v) ) error) 
                               then false else true
+end.
+
+Definition getVal (m : MemoryLayer) (v : Var) : newType :=
+match m with
+| pair st mem _ gst gmem _ => if (isLocal m v) 
+                              then mem(st v) else gmem(gst v)
 end.
 
 Definition getPointerAdress (a : newType) : nat :=
