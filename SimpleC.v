@@ -105,16 +105,9 @@ end.
 
 Definition digit_to_ascii (n : Z) : ascii :=
 match n with
-|Z0 => "0"
-|1 => "1"
-|2 => "2"
-|3 => "3"
-|4 => "4"
-|5 => "5"
-|6 => "6"
-|7 => "7"
-|8 => "8"
-|9 => "9"
+|Z0 => "0" |1 => "1" |2 => "2" |3 => "3"
+|4 => "4" |5 => "5" |6 => "6"
+|7 => "7" |8 => "8" |9 => "9"
 |_ => ascii_of_nat 1
 end.
 
@@ -257,7 +250,7 @@ Inductive newType : Type :=
 | boolType : newBool -> newType (*variabila este de tip bool*)
 | strType : newString -> newType (*variabila este de tip string*)
 | pointer : nat -> bool -> newType (*pointer*)
-| code : Stmt -> newType. (*codul unei funcii*)
+| code : list Var -> Stmt -> newType. (*codul unei funcii*)
 
 Coercion nrType : newNr >-> newType.
 Coercion boolType : newBool >-> newType.
@@ -357,7 +350,7 @@ match a, b with
 | boolType _, boolType _ => true
 | strType _, strType _ => true
 | pointer _ _, pointer _ _ => true
-| code _, code _ => true
+| code _ _, code _ _ => true
 | _, _ => false
 end.
 
@@ -369,7 +362,7 @@ Notation "<< S , M , N >>-<< GS , GM , GN >>" := (pair S M N GS GM GN) (at level
 
 Definition isLocal (m : MemoryLayer) (v : Var) : bool :=
 match m with
-| pair st mem _ gst gmem _ => if (EqForTypes ( mem (st v) ) error) 
+| pair st mem _ gst gmem _ => if andb (Nat.eqb (st v) 0%nat) (EqForTypes ( mem (st v) ) error) 
                               then false else true
 end.
 
@@ -385,12 +378,18 @@ match a with
 | _ => 0
 end.
 
+Definition isPointerLocal (a : newType) : bool :=
+match a with
+| pointer _ isl => isl
+| _ => false
+end.
+
 Definition getPointerVal (m : MemoryLayer) (p : Var) : newType :=
 let point := getVal m p in
 match point with
 | pointer nr isl => match m with
                     | pair _ mem _ _ gmem _ => if (isl) then
-                                              (mem (getPointerAdress point) ) else (gmem (getPointerAdress point) )
+                                              (mem nr ) else (gmem nr)
                     end 
 | _ => error
 end.
@@ -456,20 +455,16 @@ match M with
        <<st, mem, max>>-<<gst, updateMemory gmem addr T, gmax >>
 end.
 
-Definition updateAtAdress (M : MemoryLayer) (addr : nat) (T : newType) : MemoryLayer :=
+Definition updateAtAdress (M : MemoryLayer) (isL : bool) (addr : nat) (T : newType) : MemoryLayer :=
 match M with
-|<<st, mem, max>>-<<gst, gmem, gmax>> => if (EqForTypes (mem addr) error)
-                                         then updateGlobalAtAdress M addr T
-                                         else updateLocalAtAdress M addr T
+|<<st, mem, max>>-<<gst, gmem, gmax>> => if isL
+                                         then updateLocalAtAdress M addr T
+                                         else updateGlobalAtAdress M addr T
 end.
 
 Definition mem0 : Memory := fun n => error.
 Definition state0 : State := fun x => 0%nat.
 Definition stack0 := <<state0, mem0, 1>>-<<state0, mem0, 1>>.
-Definition NewLocalStack (m:MemoryLayer) : MemoryLayer :=
-match m with
-| <<st, mem, max>>-<<gst, gmem, gmax>> => <<state0, mem0, 1>>-<<gst, gmem, gmax>>
-end.
 
 Definition newPlus (a b : newType) :=
 match a, b with
@@ -792,8 +787,14 @@ Qed.
 
 Definition getStmt (cod : newType) : Stmt :=
 match cod with
-| code stmt => stmt
+| code _ stmt => stmt
 | _ => skip
+end.
+
+Definition getArgs (cod : newType) : list Var :=
+match cod with
+| code args _ => args
+| _ => nil
 end.
 
 Definition TypeToBool (b : newType) : bool :=
@@ -832,6 +833,19 @@ match l, g with
     <<st2, mem2, max2>>-<<gst2, gmem2, gmax2>> => <<st1, mem1, max1>>-<<gst2, gmem2, gmax2>>
 end.
 
+Definition DeleteLocal (m:MemoryLayer ) : MemoryLayer :=
+match m with 
+| <<st, mem, max>>-<<gst, gmem, gmax>> => <<state0, mem0, 1>>-<<gst, gmem, gmax>>
+end.
+
+Fixpoint NewLocalStack (l1 l2 : list Var) (m save:MemoryLayer): MemoryLayer :=
+match l1, l2 with
+| nil , nil => save
+| x :: nil, y :: nil => updateLocal save y (getVal m x) (getLocalMaxPos save)
+| x :: l1', y :: l2' => NewLocalStack l1' l2' m (updateLocal save y (getVal m x) (getLocalMaxPos save) )
+| _, _ => DeleteLocal m
+end.
+
 
 Reserved Notation " L -[ M1 , S1 ]=> M2 , S2" (at level 60).
 Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> MemoryLayer -> MemoryLayer -> Prop :=
@@ -856,17 +870,17 @@ Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> MemoryLayer -> Memor
 | st_asigint : forall s a val sigma sigma1 save,
     EqForTypes (getVal sigma s) (nrType 0) = true ->
     val =A[ sigma ]A> a ->
-    sigma1 = updateAtAdress sigma (getAdress sigma s) a ->
+    sigma1 = updateAtAdress sigma (isLocal sigma s) (getAdress sigma s) a ->
     ( s :N= val )-[ sigma , save ]=> sigma1 , save
 | st_asigbool : forall s b val sigma sigma1 save,
     EqForTypes (getVal sigma s) (boolType false) = true ->
     val =B[ sigma ]B> b ->
-    sigma1 = updateAtAdress sigma (getAdress sigma s) b ->
+    sigma1 = updateAtAdress sigma (isLocal sigma s) (getAdress sigma s) b ->
     ( s :B= val )-[ sigma , save ]=> sigma1 , save
 | st_asigstring : forall s val sigma sigma1 str save,
     EqForTypes (getVal sigma s) (strType str("") ) = true ->
     val =S[ sigma ]S> str ->
-    sigma1 = updateAtAdress sigma (getAdress sigma s) str  ->
+    sigma1 = updateAtAdress sigma (isLocal sigma s) (getAdress sigma s) str  ->
     ( s :S= val )-[ sigma , save ]=> sigma1 , save
 | st_iffalse : forall b s1 sigma save,
     b =B[ sigma ]B> false ->
@@ -916,26 +930,18 @@ Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> MemoryLayer -> Memor
 | st_intpoint_asig : forall V E i1 sigma sigma1 save,
     EqForTypes (getVal sigma V) (pointer 0 false) = true ->
     E =A[ sigma ]A> i1 ->
-    sigma1 = updateAtAdress sigma (getPointerAdress (getVal sigma V) ) i1  ->
+    sigma1 = updateAtAdress sigma (isPointerLocal (getVal sigma V) ) (getPointerAdress (getVal sigma V) ) i1  ->
     ( n* V ::= E )-[ sigma , save ]=> sigma1, save
 | st_boolpoint_asig : forall V E i1 sigma sigma1 save,
     EqForTypes (getVal sigma V) (pointer 0 false) = true ->
     E =B[ sigma ]B> i1 ->
-    sigma1 = updateAtAdress sigma (getPointerAdress (getVal sigma V) ) i1 ->
+    sigma1 = updateAtAdress sigma (isPointerLocal (getVal sigma V) ) (getPointerAdress (getVal sigma V) ) i1 ->
    ( b* V ::= E )-[ sigma , save ]=> sigma1 , save
 | st_strpoint_asig : forall V E i1 sigma sigma1 save,
     EqForTypes (getVal sigma V) (pointer 0 false) = true ->
     E =S[ sigma ]S> i1 ->
-    sigma1 = updateAtAdress sigma (getPointerAdress (getVal sigma V) ) i1  ->
+    sigma1 = updateAtAdress sigma (isPointerLocal (getVal sigma V) ) (getPointerAdress (getVal sigma V) ) i1  ->
    ( s* V ::= E )-[ sigma , save ]=> sigma1 , save
-| st_callfun : forall s l stmt sigma sigma1 save,
-    stmt = getStmt (getVal sigma s ) ->
-    ( stmt )-[ NewLocalStack sigma , sigma]=> sigma1 , save ->
-    ( apelfunc s l )-[ sigma , save ]=> sigma1 , save
-| st_return : forall sigma sigma' save save',
-    save' = stack0 ->
-    sigma' = MergeMemory save sigma ->
-    ( Return )-[sigma, save]=> sigma', save'
 | st_switch : forall a cl sigma n v sigma' save,
     a =A[ sigma ]A> n ->
     v = (get_switch_case n cl) ->
@@ -950,6 +956,17 @@ Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> MemoryLayer -> Memor
     st -[ sigma , save ]=> sigma' , save ->
     b =B[ sigma' ]B> false ->
     do'{ st }while( b ) -[ sigma , save ]=> sigma' , save
+| st_callfun : forall s L args stmt sigma sigma' sigma1 save,
+    args = getArgs (getVal sigma s ) ->
+    length L = length args ->
+    sigma' = NewLocalStack L args sigma (DeleteLocal sigma)->
+    stmt = getStmt (getVal sigma s ) ->
+    ( stmt )-[ sigma' , sigma]=> sigma1 , save ->
+    ( apelfunc s L )-[ sigma , save ]=> sigma1 , save
+| st_return : forall sigma sigma' save save',
+    save' = stack0 ->
+    sigma' = MergeMemory save sigma->
+    ( Return )-[sigma, save]=> sigma', save'
 where "L -[ M1 , S1 ]=> M2 , S2" := (stmt_eval L M1 S1 M2 S2).
 
 Example ex2 : exists stack', ( int' "x" <-- 10 ;;
@@ -970,7 +987,7 @@ Proof.
     +simpl. trivial.
     +eapply e_const.
     +unfold updateLocal. simpl. trivial.
-  *simpl. unfold updateMemory. simpl. trivial.
+  *simpl. unfold updateMemory. simpl. unfold getPointerVal. simpl. trivial.
 Qed.
 
 Example ex3 : exists stack', ( bool' "x" <--false ;; "x" :B= true )-[ stack0 , stack0 ]=> stack' , stack0
@@ -1007,10 +1024,10 @@ Inductive lang_eval : Lang -> MemoryLayer -> MemoryLayer -> Prop :=
 | l_funMain : forall stmt sigma sigma1 save,
   save = stack0 ->
   ( stmt )-[ sigma , save ]=> sigma1 , save->
-  ( void main() { stmt } )-{ sigma }=> sigma1
-| l_function : forall s stmt sigma sigma1,
-  sigma1 = updateGlobal sigma s (code stmt) (getGlobalMaxPos sigma) ->
-  ( void s (){ stmt } )-{ sigma }=> sigma1
+  ( functiaMain stmt )-{ sigma }=> sigma1
+| l_function : forall s L  stmt sigma sigma1,
+  sigma1 = updateGlobal sigma s (code L stmt) (getGlobalMaxPos sigma) ->
+  ( functie s L stmt )-{ sigma }=> sigma1
 where "L -{ M1 }=> M2" := (lang_eval L M1 M2).
 
 Example ex4 : exists stack', 
@@ -1031,16 +1048,16 @@ Qed.
 
 Definition sample1 := 
   int0' "x" ;' 
-  void "fun" (){
-    "x" :N= 100 ;;
+  void "fun" (("y")){
+    "x" :N= "y" -' 100 ;;
     Return
   } ;'
   void main() {
-     "x" :N= 654 ;;
-     call "fun" (())
+     "x" :N= 135 ;;
+     call "fun" (("x"))
   }.
 Example ex5 : exists stack', ( sample1 )-{ stack0 }=> stack' 
-      /\ getVal stack' "x" = 100.
+      /\ getVal stack' "x" = 35.
 Proof.
   eexists.  
   split.
@@ -1052,11 +1069,11 @@ Proof.
         *eapply st_secv.
           **eapply st_asigint. simpl. trivial. 
             eapply e_const. unfold updateAtAdress. simpl. trivial.
-          **eapply st_callfun. simpl. trivial.
+          **eapply st_callfun; simpl; trivial.
             eapply st_secv.
-            --eapply st_asigint. simpl. trivial.
-              eapply e_const. unfold updateAtAdress. simpl. trivial.
-            --eapply st_return. trivial. trivial.
+            --eapply st_asigint; eauto.
+              eapply e_sub. eapply e_var. eapply e_const. eauto.
+            --eapply st_return; eauto.
    -simpl. unfold updateMemory. simpl. trivial.
 Qed.
 
