@@ -255,7 +255,6 @@ Inductive newType : Type :=
 Coercion nrType : newNr >-> newType.
 Coercion boolType : newBool >-> newType.
 Coercion strType : newString >-> newType.
-Coercion code : Stmt >-> newType.
 
 Notation "'int**' V <-- P" := (point_int V P) (at level 90).
 Notation "'bool**' V <-- P" := (point_bool V P) (at level 90).
@@ -543,7 +542,7 @@ match a with
                | strVal s => str_toNewNr s
                | errStr => nrType errNr
                end
-|_ => nrType errNr
+|_ => error
 end.
 
 Definition notb (a : bool) : bool :=
@@ -845,7 +844,6 @@ match l1, l2 with
 | x :: l1', y :: l2' => NewLocalStack l1' l2' m (updateLocal save y (getVal m x) (getLocalMaxPos save) )
 | _, _ => DeleteLocal m
 end.
-
 
 Reserved Notation " L -[ M1 , S1 ]=> M2 , S2" (at level 60).
 Inductive stmt_eval : Stmt -> MemoryLayer -> MemoryLayer -> MemoryLayer -> MemoryLayer -> Prop :=
