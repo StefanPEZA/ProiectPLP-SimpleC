@@ -223,13 +223,22 @@ Definition update (env : Var -> Z) (v : Var) (n : Z) : Var -> Z :=
 
 Definition aenv1 := update aenv0 "x" 10.
 
+Definition aexpZ (a : newNr) : Z :=
+match a with 
+|nrVal n => n
+| _ => 0
+end.
+
+Definition bexpZ (b : newBool) : Z :=
+match b with 
+|boolVal b => (toZ b)
+| _ => 0
+end.
+
 Fixpoint interpretA (a : AExp) (env : Var -> Z) : Z :=
   match a with
   | avar k => env k
-  | aconst c => match c with 
-                |nrVal n => n
-                | _ => 0
-                end
+  | aconst c => aexpZ c
   | adunare a1 a2 => (interpretA a1 env) + (interpretA a2 env)
   | scadere a1 a2 => (interpretA a1 env) - (interpretA a2 env)
   | inmultire a1 a2 => (interpretA a1 env) * (interpretA a2 env)
@@ -241,10 +250,7 @@ Fixpoint interpretA (a : AExp) (env : Var -> Z) : Z :=
 Fixpoint interpretB (b : BExp) (env : Var -> Z) : Z :=
   match b with
   | bvar k => env k
-  | bconst c => match c with 
-                |boolVal b => (toZ b)
-                | _ => 0
-                end
+  | bconst c => bexpZ c
   | mai_micEq a1 a2 => toZ(Z.leb (interpretA a1 env) (interpretA a2 env))
   | mai_mic a1 a2 => toZ(Z.ltb (interpretA a1 env) (interpretA a2 env))
   | mai_mareEq a1 a2 => toZ(Z.leb (interpretA a2 env) (interpretA a1 env))
@@ -324,11 +330,11 @@ Definition run_instruction (i : Instruction)
           | _ => stack
           end
   | eq => match stack with 
-          | n1 :: n2 :: stack' => toZ(Z.eqb n1 n2) :: stack'
+          | n1 :: n2 :: stack' => toZ(Z.eqb n2 n1) :: stack'
           | _ => stack
           end
   | neq => match stack with 
-          | n1 :: n2 :: stack' => notZ(toZ(Z.eqb n1 n2)) :: stack'
+          | n1 :: n2 :: stack' => notZ(toZ(Z.eqb n2 n1)) :: stack'
           | _ => stack
           end
   | or => match stack with 
@@ -378,10 +384,7 @@ Compute run_instructions pgm1 aenv0 [].
 (*compilator*)
 Fixpoint compileA (ae : AExp) : list Instruction :=
 match ae with
-  | aconst c => match c with 
-                |nrVal n => [push_const n]
-                | _ => [push_const 0]
-                end
+  | aconst c => [push_const (aexpZ c)]
   | avar v => [push_var v]
   | adunare e1 e2 => (compileA e1) ++ (compileA e2) ++ [add]
   | inmultire e1 e2 => (compileA e1) ++ (compileA e2) ++ [mul]
@@ -393,10 +396,7 @@ end.
 
 Fixpoint compileB (be : BExp) : list Instruction :=
 match be with
-  | bconst c => match c with 
-                |boolVal b => [push_const (toZ b)]
-                | _ => [push_const 0]
-                end
+  | bconst c => [push_const (bexpZ c)]
   | bvar v => [push_var v]
   | negatie B => (compileB B ) ++ [not]
   | si_logic B1 B2 => (compileB B1) ++ (compileB B2) ++ [and]
@@ -418,10 +418,66 @@ Compute (compileA (130 %' 7)).
 Compute run_instructions (compileA (130 %' 7)) aenv1 [].
 Compute run_instructions (compileB ((10 -' 2 *' 2 *' 2) <' 130 %' 7)) aenv1 [].
 
+Require Import Bool.
 (*certificare*)
+Lemma soundness_helper_A : 
+    forall e env stack is',
+      run_instructions (compileA e ++ is') env stack =
+      run_instructions is' env ((interpretA e env) :: stack).
+Proof.
+    induction e; intros; simpl; trivial; rewrite <- app_assoc; rewrite <- app_assoc;
+    rewrite IHe1; rewrite IHe2; simpl; trivial.
+Qed.
 
+Theorem soundness_A :
+    forall e env,
+      run_instructions (compileA e) env [] = 
+        [interpretA e env].
+Proof. 
+    intros.
+    rewrite <- app_nil_r with (l := (compileA e)).
+    rewrite soundness_helper_A.
+    simpl. trivial.
+Qed.
 
+Lemma soundness_helper_B : 
+    forall e env stack is',
+      run_instructions (compileB e ++ is') env stack =
+      run_instructions is' env ((interpretB e env) :: stack).
+Proof.
+    induction e; intros; trivial; 
+    simpl; rewrite <- app_assoc.
+    -rewrite IHe. simpl. trivial.
+    -rewrite <- app_assoc. rewrite IHe1. rewrite IHe2. simpl.
+    rewrite andb_comm. trivial.
+    -rewrite <- app_assoc. rewrite IHe1. rewrite IHe2. simpl.
+    rewrite orb_comm. trivial.
+    -rewrite <- app_assoc. simpl. rewrite soundness_helper_A.
+    rewrite soundness_helper_A. simpl. trivial.
+    -rewrite <- app_assoc. simpl. rewrite soundness_helper_A.
+    rewrite soundness_helper_A. simpl. trivial.
+    -rewrite <- app_assoc. simpl. rewrite soundness_helper_A.
+    rewrite soundness_helper_A. simpl. trivial.
+    -rewrite <- app_assoc. simpl. rewrite soundness_helper_A.
+    rewrite soundness_helper_A. simpl. trivial.
+    -rewrite <- app_assoc. simpl. rewrite soundness_helper_A.
+    rewrite soundness_helper_A. simpl. trivial.
+    -rewrite <- app_assoc. simpl. rewrite soundness_helper_A.
+    rewrite soundness_helper_A. simpl. trivial.
+Qed.
 
+Theorem soundness_B :
+    forall e env,
+      run_instructions (compileB e) env [] = 
+        [interpretB e env].
+Proof.
+  intros.
+   rewrite <- app_nil_r with (l := (compileB e)).
+    rewrite soundness_helper_B.
+    simpl. trivial.
+Qed.
+  
+--stop--
 Inductive Stmt := 
 (*in interiorul unei functii se pot declara 
 variabile doar cu o valoare introdusa manual*)
