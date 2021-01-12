@@ -3,6 +3,7 @@ Require Import Coq.ZArith.BinInt.
 Require Import Coq.Numbers.BinNums.
 Require Import Coq.Lists.List.
 Require Import Extraction.
+Import ListNotations.
 Local Open Scope string_scope. 
 Local Open Scope list_scope.
 Local Open Scope N_scope.
@@ -199,6 +200,227 @@ Notation "A >' B" := (mai_mare A B) (at level 52, left associativity).
 Notation "A ==' B" := (egalitate A B) (at level 53, left associativity).
 Notation "A !=' B" := (egalitate A B) (at level 53, left associativity).
 Notation "'b*' V" := (ref_bool V) (at level 0).
+
+Definition notZ (a : Z) : Z := if (Z.eqb a 0) then 1 else 0.
+
+Definition toZ (b : bool) : Z :=
+match b with
+| true => 1
+| false => 0
+end.
+
+Definition toB (a : Z) : bool := if (Z.eqb a 0) then false else true.
+
+
+Definition aenv0 : Var -> Z := 
+  fun x => 0.
+
+Definition update (env : Var -> Z) (v : Var) (n : Z) : Var -> Z :=
+  fun var : Var => 
+      if (Var_beq var v) 
+      then n
+      else (env var).
+
+Definition aenv1 := update aenv0 "x" 10.
+
+Fixpoint interpretA (a : AExp) (env : Var -> Z) : Z :=
+  match a with
+  | avar k => env k
+  | aconst c => match c with 
+                |nrVal n => n
+                | _ => 0
+                end
+  | adunare a1 a2 => (interpretA a1 env) + (interpretA a2 env)
+  | scadere a1 a2 => (interpretA a1 env) - (interpretA a2 env)
+  | inmultire a1 a2 => (interpretA a1 env) * (interpretA a2 env)
+  | impartire a1 a2 => (interpretA a1 env) / (interpretA a2 env)
+  | modulo a1 a2 => Z.modulo (interpretA a1 env) (interpretA a2 env)
+  | _ => 0
+  end.
+
+Fixpoint interpretB (b : BExp) (env : Var -> Z) : Z :=
+  match b with
+  | bvar k => env k
+  | bconst c => match c with 
+                |boolVal b => (toZ b)
+                | _ => 0
+                end
+  | mai_micEq a1 a2 => toZ(Z.leb (interpretA a1 env) (interpretA a2 env))
+  | mai_mic a1 a2 => toZ(Z.ltb (interpretA a1 env) (interpretA a2 env))
+  | mai_mareEq a1 a2 => toZ(Z.leb (interpretA a2 env) (interpretA a1 env))
+  | mai_mare a1 a2 => toZ(Z.ltb (interpretA a2 env) (interpretA a1 env))
+  | si_logic a1 a2 => toZ(andb (toB(interpretB a1 env)) (toB(interpretB a2 env)))
+  | sau_logic a1 a2 => toZ(orb (toB(interpretB a1 env)) (toB(interpretB a2 env)))
+  | negatie b' => notZ (interpretB b' env)
+  | egalitate a1 a2 => toZ( Z.eqb (interpretA a1 env) (interpretA a2 env) )
+  | inegalitate a1 a2 => notZ (toZ( Z.eqb (interpretA a1 env) (interpretA a2 env) ))
+  | _ => 0
+  end.
+
+(*limbaj de asamblare*)
+Inductive Instruction :=
+| push_const : Z -> Instruction
+| push_var : Var -> Instruction
+| pop : Var -> Instruction
+| add : Instruction
+| mul : Instruction
+| sub : Instruction
+| div : Instruction
+| modu : Instruction
+| lt : Instruction
+| lte : Instruction
+| gt : Instruction
+| gte : Instruction
+| eq : Instruction
+| neq : Instruction
+| or : Instruction
+| and : Instruction
+| not : Instruction.
+
+Definition Stack := list Z.
+Definition run_instruction (i : Instruction) 
+          (env : Var -> Z) (stack : Stack) : Stack :=
+  match i with
+  | push_const c => (c :: stack)
+  | push_var x => ((env x) :: stack)
+  | pop x => match stack with
+             | l :: stack' => stack'
+             | _ => stack
+             end
+  | add => match stack with 
+           | n1 :: n2 :: stack' => (n2 + n1) :: stack'
+           | _ => stack
+           end
+  | mul => match stack with 
+           | n1 :: n2 :: stack' => (n2 * n1) :: stack'
+           | _ => stack
+           end
+  | sub => match stack with 
+           | n1 :: n2 :: stack' => (n2 - n1) :: stack'
+           | _ => stack
+           end
+  | div => match stack with 
+           | n1 :: n2 :: stack' => (n2 / n1) :: stack'
+           | _ => stack
+           end
+  | modu => match stack with 
+           | n1 :: n2 :: stack' => (Z.modulo n2 n1) :: stack'
+           | _ => stack
+           end
+  | lt => match stack with 
+          | n1 :: n2 :: stack' => toZ(Z.ltb n2 n1) :: stack'
+          | _ => stack
+          end
+  | lte => match stack with 
+          | n1 :: n2 :: stack' => toZ(Z.leb n2 n1) :: stack'
+          | _ => stack
+          end
+  | gt => match stack with 
+          | n1 :: n2 :: stack' => toZ(Z.ltb n1 n2) :: stack'
+          | _ => stack
+          end
+  | gte => match stack with 
+          | n1 :: n2 :: stack' => toZ(Z.leb n1 n2) :: stack'
+          | _ => stack
+          end
+  | eq => match stack with 
+          | n1 :: n2 :: stack' => toZ(Z.eqb n1 n2) :: stack'
+          | _ => stack
+          end
+  | neq => match stack with 
+          | n1 :: n2 :: stack' => notZ(toZ(Z.eqb n1 n2)) :: stack'
+          | _ => stack
+          end
+  | or => match stack with 
+          | b1 :: b2 :: stack' => toZ(orb (toB b1) (toB b2) ) :: stack'
+          | _ => stack
+          end
+  | and => match stack with 
+          | b1 :: b2 :: stack' => toZ(andb (toB b1) (toB b2) ) :: stack'
+          | _ => stack
+          end
+  | not => match stack with 
+          | b :: stack' => notZ b :: stack'
+          | _ => stack
+          end
+  end.
+
+
+Fixpoint run_instructions (is' : list Instruction) 
+          (env : Var -> Z) (stack : Stack) : Stack :=
+  match is' with
+  | [] => stack
+  | pop x :: is'' => match stack with
+                    | n :: stack' => 
+                run_instructions is'' (update env x n) (run_instruction (pop x) env stack)
+                    | _ => run_instructions is'' env (run_instruction (pop x) env stack)
+                    end
+  | i :: is'' => run_instructions is'' env (run_instruction i env stack)
+  end.
+
+Definition pgm1 := [
+    push_const 10;
+    push_const 60;
+    pop "a" ;       (*a = 60*)
+    pop "b" ;       (*b = 10*)
+    push_var "b" ;  (*10*)
+    push_var "a" ;  (*60*)
+    sub ;           (*10 - 60 = -50*)
+    pop "x" ;       (*x = -50*)
+    push_var "a" ;  (*10*)
+    push_var "b" ;  (*60*)
+    add ;           (*10 + 60 = 70*)
+    push_var "x"    (*-50*) ;
+    gt
+].
+Compute run_instructions pgm1 aenv0 [].
+
+(*compilator*)
+Fixpoint compileA (ae : AExp) : list Instruction :=
+match ae with
+  | aconst c => match c with 
+                |nrVal n => [push_const n]
+                | _ => [push_const 0]
+                end
+  | avar v => [push_var v]
+  | adunare e1 e2 => (compileA e1) ++ (compileA e2) ++ [add]
+  | inmultire e1 e2 => (compileA e1) ++ (compileA e2) ++ [mul]
+  | scadere e1 e2 => (compileA e1) ++ (compileA e2) ++ [sub]
+  | impartire e1 e2 => (compileA e1) ++ (compileA e2) ++ [div]
+  | modulo e1 e2 => (compileA e1) ++ (compileA e2) ++ [modu]
+  | _ => [push_const 0]
+end.
+
+Fixpoint compileB (be : BExp) : list Instruction :=
+match be with
+  | bconst c => match c with 
+                |boolVal b => [push_const (toZ b)]
+                | _ => [push_const 0]
+                end
+  | bvar v => [push_var v]
+  | negatie B => (compileB B ) ++ [not]
+  | si_logic B1 B2 => (compileB B1) ++ (compileB B2) ++ [and]
+  | sau_logic B1 B2 => (compileB B1) ++ (compileB B2) ++ [or]
+  | mai_mic A1 A2 => (compileA A1) ++ (compileA A2) ++ [lt]
+  | mai_micEq A1 A2 => (compileA A1) ++ (compileA A2) ++ [lte]
+  | mai_mare A1 A2 => (compileA A1) ++ (compileA A2) ++ [gt]
+  | mai_mareEq A1 A2 => (compileA A1) ++ (compileA A2) ++ [gte]
+  | egalitate A1 A2 => (compileA A1) ++ (compileA A2) ++ [eq]
+  | inegalitate A1 A2 => (compileA A1) ++ (compileA A2) ++ [neq]
+  | _ => [push_const 0]
+end.
+
+Compute compileA (10 -' 2 *' 2 *' 2).
+Compute run_instructions (compileA (10 -' 2 *' 2 *' 2)) aenv1 [].
+
+Compute compileB ((10 -' 2 *' 2 *' 2) <' 130 %' 7).
+Compute (compileA (130 %' 7)).
+Compute run_instructions (compileA (130 %' 7)) aenv1 [].
+Compute run_instructions (compileB ((10 -' 2 *' 2 *' 2) <' 130 %' 7)) aenv1 [].
+
+(*certificare*)
+
+
 
 Inductive Stmt := 
 (*in interiorul unei functii se pot declara 
